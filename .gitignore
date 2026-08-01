@@ -1,11 +1,16 @@
 # Base de datos local
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3
+*.sqlite3-*
 
 # Contraseñas y variables privadas
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
 
 # Entorno virtual
 venv/
@@ -19,6 +24,11 @@ __pycache__/
 
 # Archivos subidos por usuarios
 media/
+staticfiles/
+
+# Archivos privados locales
+secrets/
+private/
 
 # Visual Studio Code
 .vscode/
