@@ -1,5 +1,4 @@
-// Modo demostración. Sustituye estos valores con los públicos de Supabase.
-window.MASTERFULL_CONFIG = window.MASTERFULL_CONFIG || {
-  supabaseUrl: "",
-  supabaseAnonKey: ""
+window.MASTERFULL_CONFIG = {
+  supabaseUrl: "https://tovjfxgobrixtasroxzl.supabase.co",
+  supabaseAnonKey: "sb_publishable_6l9eLPXy08yBfhEs0km8Ug_LAAaSR8c"
 };
