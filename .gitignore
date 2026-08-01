@@ -1,0 +1,32 @@
+# Base de datos local
+db.sqlite3
+db.sqlite3-journal
+
+# Contraseñas y variables privadas
+.env
+.env.*
+!.env.example
+
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Archivos temporales de Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Archivos subidos por usuarios
+media/
+
+# Visual Studio Code
+.vscode/
+
+# Caché y registros
+.pytest_cache/
+.coverage
+*.log
+
+# Windows
+Thumbs.db

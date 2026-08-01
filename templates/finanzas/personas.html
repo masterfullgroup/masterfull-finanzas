@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Personas{% endblock %}
+{% block eyebrow %}Perfiles del hogar{% endblock %}
+{% block heading %}Finanzas por persona{% endblock %}
+{% block content %}
+<div class="page-intro">
+    <p>Consulta de forma independiente los ingresos, egresos y balances de cada integrante.</p>
+    <a class="btn btn-primary" href="{% url 'persona_crear' %}"><svg><use href="#i-plus"/></svg>Nueva persona</a>
+</div>
+<section class="profile-grid">
+{% for item in resumen %}
+    <article class="profile-card">
+        <div class="profile-head">
+            <span class="large-avatar" style="background:{{ item.persona.color }}">{{ item.persona.nombre|first|upper }}</span>
+            <div><h2>{{ item.persona.nombre }}</h2><span class="relation-badge">{{ item.persona.get_relacion_display }}</span></div>
+            <a class="icon-button" title="Editar perfil" href="{% url 'persona_editar' item.persona.pk %}"><svg><use href="#i-more"/></svg></a>
+        </div>
+        <div class="profile-balance"><small>Balance de este mes</small><strong class="{% if item.balance >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ item.balance|floatformat:2 }}</strong><span>{{ item.movimientos }} movimiento{{ item.movimientos|pluralize }}</span></div>
+        <div class="profile-stats">
+            <div><small>Ingresos</small><strong class="text-positive">+ S/ {{ item.ingresos|floatformat:2 }}</strong></div>
+            <div><small>Egresos</small><strong class="text-negative">− S/ {{ item.gastos|floatformat:2 }}</strong></div>
+        </div>
+        <a class="profile-link" href="{% url 'persona_detalle' item.persona.pk %}">Ver detalle financiero <svg><use href="#i-arrow"/></svg></a>
+    </article>
+{% empty %}
+    <div class="surface empty-state full-span"><span class="empty-icon"><svg><use href="#i-users"/></svg></span><h3>Crea el primer perfil</h3><p>Asigna cada ingreso y egreso para mantener ordenadas las finanzas del hogar.</p><a class="btn btn-primary" href="{% url 'persona_crear' %}"><svg><use href="#i-plus"/></svg>Crear persona</a></div>
+{% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Flujo mensual{% endblock %}
+{% block eyebrow %}Control por periodo{% endblock %}
+{% block heading %}Flujo mensual{% endblock %}
+{% block top_action %}{% endblock %}
+{% block content %}
+<section class="month-toolbar">
+    <a href="?mes={{ mes_anterior|date:'Y-m' }}" aria-label="Mes anterior">‹</a>
+    <div><span>Periodo seleccionado</span><strong>{{ mes_actual|date:"F Y"|capfirst }}</strong></div>
+    <a href="?mes={{ mes_siguiente|date:'Y-m' }}" aria-label="Mes siguiente">›</a>
+    <form method="get"><label for="month-picker">Ir a otro mes</label><input id="month-picker" type="month" name="mes" value="{{ mes_actual|date:'Y-m' }}" onchange="this.form.submit()"></form>
+</section>
+
+<section class="flow-summary-board">
+    <div class="flow-net"><span>Resultado neto del mes</span><strong class="{% if balance >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ balance|floatformat:2 }}</strong><p>{% if balance > 0 %}Este mes cerró con dinero disponible.{% elif balance < 0 %}Los egresos superaron los ingresos del periodo.{% else %}Ingresos y egresos están equilibrados.{% endif %}</p></div>
+    <div class="flow-stat income"><span>Ingresos</span><strong>+ S/ {{ ingresos|floatformat:2 }}</strong><small>Total recibido</small></div>
+    <div class="flow-stat expense"><span>Egresos</span><strong>− S/ {{ egresos|floatformat:2 }}</strong><small>Promedio diario: S/ {{ promedio_egreso|floatformat:2 }}</small></div>
+    <div class="flow-stat saving"><span>Tasa de ahorro</span><strong>{{ tasa_ahorro }}%</strong><small>Balance sobre ingresos</small></div>
+</section>
+
+<section class="surface daily-flow-panel">
+    <header class="surface-header"><div><span class="overline">Comportamiento diario</span><h2>Entradas y salidas durante el mes</h2></div><div class="flow-legend"><span><i class="income"></i>Ingresos</span><span><i class="expense"></i>Egresos</span></div></header>
+    <div class="daily-chart-wrap"><div class="daily-chart" style="grid-template-columns:repeat({{ dias|length }},minmax(25px,1fr))">
+        {% for dia in dias %}<div class="day-column" title="{{ dia.fecha|date:'d/m/Y' }} · Ingresos S/ {{ dia.ingresos|floatformat:2 }} · Egresos S/ {{ dia.egresos|floatformat:2 }}"><div class="day-bars"><i class="income" style="height:{{ dia.ingreso_pct }}%"></i><i class="expense" style="height:{{ dia.egreso_pct }}%"></i></div><span>{{ dia.fecha|date:"d" }}</span></div>{% endfor %}
+    </div></div>
+</section>
+
+<section class="monthly-detail-grid">
+    <article class="surface"><header class="surface-header"><div><span class="overline">Participación</span><h2>Flujo por persona</h2></div></header><div class="monthly-people">{% for item in personas %}<a href="{% url 'persona_detalle' item.persona.pk %}"><span class="person-avatar" style="--avatar-color:{{ item.persona.color }}">{{ item.persona.nombre|first|upper }}</span><div><strong>{{ item.persona.nombre }}</strong><small>Balance S/ {{ item.balance|floatformat:2 }}</small></div><p><span class="text-positive">+ {{ item.ingresos|floatformat:2 }}</span><span class="text-negative">− {{ item.egresos|floatformat:2 }}</span></p></a>{% empty %}<div class="compact-empty"><span class="empty-icon small"><svg><use href="#i-users"/></svg></span><p>No hay personas con movimientos en este mes.</p></div>{% endfor %}</div></article>
+    <article class="surface"><header class="surface-header"><div><span class="overline">Distribución</span><h2>Principales categorías de egreso</h2></div></header><div class="category-bars">{% for item in categorias %}<div class="category-row"><div><span><i class="tiny-dot" style="background:{{ item.categoria__color }}"></i>{{ item.categoria__nombre }}</span><strong>{{ item.porcentaje }}% · S/ {{ item.total|floatformat:2 }}</strong></div><div class="progress-track"><span style="width:{{ item.porcentaje }}%;background:{{ item.categoria__color }}"></span></div></div>{% empty %}<div class="compact-empty"><span class="empty-icon small"><svg><use href="#i-tag"/></svg></span><p>No hay egresos registrados en este mes.</p></div>{% endfor %}</div></article>
+</section>
+
+<section class="surface monthly-ledger">
+    <header class="surface-header"><div><span class="overline">Libro mensual</span><h2>Todos los movimientos de {{ mes_actual|date:"F" }}</h2></div><a class="btn btn-secondary btn-small" href="{% url 'movimiento_crear' %}"><svg><use href="#i-plus"/></svg>Añadir movimiento</a></header>
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Persona</th><th>Categoría</th><th>Medio</th><th>Tipo</th><th class="right">Monto</th></tr></thead><tbody>{% for obj in movimientos %}<tr><td>{{ obj.fecha|date:"d/m/Y" }}</td><td><strong>{{ obj.descripcion|default:"Sin descripción" }}</strong>{% if obj.notas %}<small class="table-note">{{ obj.notas|truncatechars:45 }}</small>{% endif %}</td><td>{{ obj.persona|default:"Sin asignar" }}</td><td><span class="color-label"><i style="background:{{ obj.categoria.color }}"></i>{{ obj.categoria.nombre }}</span></td><td>{{ obj.cuenta|default:obj.get_medio_pago_display }}</td><td><span class="badge {{ obj.tipo|lower }}">{{ obj.get_tipo_display }}</span></td><td class="right amount {% if obj.tipo == 'INGRESO' %}text-positive{% else %}text-negative{% endif %}">{% if obj.tipo == 'INGRESO' %}+{% else %}−{% endif %} S/ {{ obj.monto|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="7"><div class="empty-state small"><span class="empty-icon"><svg><use href="#i-transfer"/></svg></span><h3>Este mes no tiene movimientos</h3><p>Agrega el primer ingreso o egreso del periodo.</p></div></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

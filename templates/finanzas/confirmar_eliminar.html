@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Eliminar{% endblock %}
+{% block heading %}Eliminar movimiento{% endblock %}
+{% block content %}
+<div class="panel form-panel">
+    <p>¿Confirmas que deseas eliminar <strong>{{ objeto }}</strong>?</p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="actions">
+            <a class="btn btn-secondary" href="{% url 'movimientos_lista' %}">Cancelar</a>
+            <button class="btn btn-danger" type="submit">Eliminar</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

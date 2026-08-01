@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Resumen{% endblock %}
+{% block heading %}Tu dinero, en contexto{% endblock %}
+{% block eyebrow %}Resumen de {% now "F" %}{% endblock %}
+{% block top_action %}{% endblock %}
+{% block content %}
+<section class="summary-atelier">
+    <article class="money-position">
+        <header><div><span class="overline">Posición actual</span><h2>Disponible en tus cuentas</h2></div><span class="period-chip">Actualizado hoy</span></header>
+        <div class="main-balance"><span>S/</span><strong>{{ saldo_total|floatformat:2 }}</strong></div>
+        <p class="balance-caption">Saldo combinado de {{ cuentas|length }} cuenta{{ cuentas|length|pluralize }} activa{{ cuentas|length|pluralize }}.</p>
+        <div class="cashflow-line">
+            <div><span class="flow-marker income"><svg><use href="#i-down"/></svg></span><p>Ingresos del mes<strong>+ S/ {{ ingresos_mes|floatformat:2 }}</strong></p></div>
+            <div><span class="flow-marker expense"><svg><use href="#i-up"/></svg></span><p>Egresos del mes<strong>− S/ {{ gastos_mes|floatformat:2 }}</strong></p></div>
+            <div><span class="flow-marker balance"><svg><use href="#i-chart"/></svg></span><p>Balance mensual<strong class="{% if balance_mes >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ balance_mes|floatformat:2 }}</strong></p></div>
+        </div>
+    </article>
+
+    <aside class="month-brief">
+        <span class="brief-icon"><svg><use href="#i-piggy"/></svg></span>
+        <span class="overline">Lectura del mes</span>
+        {% if ingresos_mes > 0 %}
+            <h2>Conservaste el {{ tasa_ahorro }}% de tus ingresos.</h2>
+            <p>{% if tasa_ahorro >= 20 %}Vas por encima de una tasa de ahorro saludable.{% elif balance_mes >= 0 %}Tu balance es positivo; aún puedes fortalecer el ahorro.{% else %}Tus egresos superaron lo ingresado durante este periodo.{% endif %}</p>
+        {% else %}
+            <h2>Empieza registrando el movimiento de hoy.</h2>
+            <p>Con ingresos y egresos al día, Masterfull podrá mostrarte una lectura útil de tu mes.</p>
+        {% endif %}
+        <div class="brief-facts"><div><span>Patrimonio neto</span><strong class="{% if patrimonio_neto >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ patrimonio_neto|floatformat:2 }}</strong></div><div><span>Deuda en tarjetas</span><strong>S/ {{ deuda_tarjetas|floatformat:2 }}</strong></div></div>
+        <div class="brief-actions"><a href="{% url 'movimiento_crear' %}?tipo=INGRESO"><svg><use href="#i-down"/></svg>Ingreso</a><a href="{% url 'movimiento_crear' %}?tipo=GASTO"><svg><use href="#i-up"/></svg>Egreso</a></div>
+    </aside>
+</section>
+
+<section class="finance-story">
+    <article class="surface activity-panel">
+        <header class="surface-header"><div><span class="overline">Tu historia reciente</span><h2>Movimientos</h2></div><a class="link-button" href="{% url 'movimientos_lista' %}">Abrir historial <svg><use href="#i-arrow"/></svg></a></header>
+        <div class="transaction-list">
+        {% for movimiento in ultimos_movimientos %}
+            <a class="transaction" href="{% url 'movimiento_editar' movimiento.pk %}"><span class="transaction-icon {% if movimiento.tipo == 'INGRESO' %}income{% else %}expense{% endif %}"><svg><use href="{% if movimiento.tipo == 'INGRESO' %}#i-down{% else %}#i-up{% endif %}"/></svg></span><span class="transaction-info"><strong>{{ movimiento.descripcion|default:movimiento.categoria.nombre }}</strong><small>{{ movimiento.fecha|date:"d M Y" }} · {{ movimiento.persona|default:"Sin asignar" }}</small></span><span class="transaction-tag"><i style="background:{{ movimiento.categoria.color }}"></i>{{ movimiento.categoria.nombre }}</span><strong class="transaction-amount {% if movimiento.tipo == 'INGRESO' %}text-positive{% else %}text-negative{% endif %}">{% if movimiento.tipo == 'INGRESO' %}+{% else %}−{% endif %} S/ {{ movimiento.monto|floatformat:2 }}</strong></a>
+        {% empty %}<div class="empty-state"><span class="empty-icon"><svg><use href="#i-transfer"/></svg></span><h3>Tu actividad aparecerá aquí</h3><p>Registra un ingreso o egreso para comenzar a visualizar tus finanzas.</p><a class="btn btn-secondary" href="{% url 'movimiento_crear' %}"><svg><use href="#i-plus"/></svg>Registrar movimiento</a></div>{% endfor %}
+        </div>
+    </article>
+
+    <div class="insight-column">
+        <article class="surface category-panel"><header class="surface-header"><div><span class="overline">En qué se fue</span><h2>Egresos por categoría</h2></div></header><div class="category-bars">{% for item in gastos_categoria %}<div class="category-row"><div><span>{{ item.categoria__nombre }}</span><strong>S/ {{ item.total|floatformat:2 }}</strong></div><div class="progress-track"><span style="width:{% widthratio item.total gastos_mes 100 %}%"></span></div></div>{% empty %}<div class="compact-empty"><span class="empty-icon small"><svg><use href="#i-chart"/></svg></span><strong>Sin egresos este mes</strong><p>Cuando registres uno aparecerá su distribución.</p></div>{% endfor %}</div></article>
+        <article class="account-note"><div><span class="overline">Liquidez</span><h2>{{ cuentas|length }} cuenta{{ cuentas|length|pluralize }} conectada{{ cuentas|length|pluralize }}</h2><p>Consulta saldos y movimientos desde la sección de cuentas.</p></div><a href="{% url 'cuentas_lista' %}" aria-label="Ver cuentas"><svg><use href="#i-arrow"/></svg></a></article>
+    </div>
+</section>
+
+<section class="people-section">
+    <header class="section-heading"><div><span class="overline">Perfiles del hogar</span><h2>Una lectura para cada persona</h2><p>Separa responsabilidades sin perder la visión del conjunto.</p></div><a class="btn btn-secondary" href="{% url 'persona_crear' %}"><svg><use href="#i-plus"/></svg>Añadir persona</a></header>
+    <div class="people-list refined">
+    {% for item in resumen_personas %}<a class="person-row" href="{% url 'persona_detalle' item.persona.pk %}"><span class="person-avatar" style="--avatar-color:{{ item.persona.color }}">{{ item.persona.nombre|first|upper }}</span><span class="person-data"><strong>{{ item.persona.nombre }}</strong><small>{{ item.persona.get_relacion_display }}</small></span><span class="person-metric"><small>Ingresos</small><strong class="text-positive">S/ {{ item.ingresos|floatformat:2 }}</strong></span><span class="person-metric"><small>Egresos</small><strong class="text-negative">S/ {{ item.gastos|floatformat:2 }}</strong></span><span class="person-metric"><small>Balance</small><strong>S/ {{ item.balance|floatformat:2 }}</strong></span><svg class="row-arrow"><use href="#i-arrow"/></svg></a>{% empty %}<div class="horizontal-empty"><span class="empty-icon"><svg><use href="#i-users"/></svg></span><div><strong>Crea perfiles individuales</strong><p>Conoce los ingresos y egresos de cada integrante.</p></div><a class="btn btn-primary" href="{% url 'persona_crear' %}"><svg><use href="#i-plus"/></svg>Crear persona</a></div>{% endfor %}
+    </div>
+</section>
+
+<section class="planning-strip">
+    <div><span class="list-icon"><svg><use href="#i-target"/></svg></span><p><span>Metas de ahorro</span><strong>{% if metas %}{{ metas|length }} objetivo{{ metas|length|pluralize }} en seguimiento{% else %}Define tu próximo objetivo{% endif %}</strong></p><a href="{% url 'metas_lista' %}"><svg><use href="#i-arrow"/></svg></a></div>
+    <div><span class="list-icon debt"><svg><use href="#i-debt"/></svg></span><p><span>Deudas pendientes</span><strong>{% if deudas_pendientes %}{{ deudas_pendientes|length }} compromiso{{ deudas_pendientes|length|pluralize }} activo{{ deudas_pendientes|length|pluralize }}{% else %}Sin compromisos registrados{% endif %}</strong></p><a href="{% url 'deudas_lista' %}"><svg><use href="#i-arrow"/></svg></a></div>
+</section>
+{% endblock %}

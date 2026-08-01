@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ persona.nombre }}{% endblock %}
+{% block eyebrow %}Perfil financiero{% endblock %}
+{% block heading %}Detalle de persona{% endblock %}
+{% block top_action %}{% endblock %}
+{% block content %}
+<section class="person-hero">
+    <div class="person-identity"><span class="large-avatar" style="background:{{ persona.color }}">{{ persona.nombre|first|upper }}</span><div><div class="breadcrumbs"><a href="{% url 'personas_lista' %}">Personas</a> / Perfil</div><h2>{{ persona.nombre }}</h2><p>{{ persona.get_relacion_display }}{% if persona.email %} · {{ persona.email }}{% endif %}</p></div></div>
+    <div class="person-actions"><a class="btn btn-secondary" href="{% url 'persona_editar' persona.pk %}">Editar perfil</a><a class="btn btn-primary" href="{% url 'movimiento_crear' %}?persona={{ persona.pk }}"><svg><use href="#i-plus"/></svg>Nuevo movimiento</a></div>
+</section>
+
+<section class="cards-grid three-cards">
+    <article class="stat-card"><div class="stat-icon income"><svg><use href="#i-down"/></svg></div><div><span>Ingresos</span><strong>S/ {{ ingresos|floatformat:2 }}</strong><small>En el periodo filtrado</small></div></article>
+    <article class="stat-card"><div class="stat-icon expense"><svg><use href="#i-up"/></svg></div><div><span>Egresos</span><strong>S/ {{ gastos|floatformat:2 }}</strong><small>En el periodo filtrado</small></div></article>
+    <article class="stat-card"><div class="stat-icon savings"><svg><use href="#i-chart"/></svg></div><div><span>Balance neto</span><strong class="{% if balance >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ balance|floatformat:2 }}</strong><small>Ingresos menos egresos</small></div></article>
+</section>
+
+<form class="filter-bar" method="get">
+    <div><label>Buscar</label><input type="search" name="q" value="{{ filtros.q }}" placeholder="Descripción o categoría"></div>
+    <div><label>Desde</label><input type="date" name="desde" value="{{ filtros.desde }}"></div>
+    <div><label>Hasta</label><input type="date" name="hasta" value="{{ filtros.hasta }}"></div>
+    <div><label>Tipo</label><select name="tipo"><option value="">Todos</option><option value="INGRESO" {% if filtros.tipo == 'INGRESO' %}selected{% endif %}>Ingresos</option><option value="GASTO" {% if filtros.tipo == 'GASTO' %}selected{% endif %}>Egresos</option></select></div>
+    <button class="btn btn-dark" type="submit">Aplicar filtros</button>
+</form>
+
+<section class="dashboard-grid">
+    <article class="panel span-2">
+        <div class="panel-header"><div><p class="section-kicker">Historial</p><h2>Ingresos y egresos detallados</h2></div><span class="muted">Máximo 100 registros</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Detalle</th><th>Categoría</th><th>Cuenta / medio</th><th>Tipo</th><th class="right">Monto</th><th></th></tr></thead><tbody>
+        {% for obj in movimientos %}<tr><td>{{ obj.fecha|date:"d/m/Y" }}</td><td><strong>{{ obj.descripcion|default:"Sin descripción" }}</strong>{% if obj.notas %}<small class="table-note">{{ obj.notas|truncatechars:45 }}</small>{% endif %}</td><td><span class="color-label"><i style="background:{{ obj.categoria.color }}"></i>{{ obj.categoria.nombre }}</span></td><td>{{ obj.cuenta|default:obj.get_medio_pago_display }}</td><td><span class="badge {{ obj.tipo|lower }}">{{ obj.get_tipo_display }}</span></td><td class="right amount {% if obj.tipo == 'INGRESO' %}text-positive{% else %}text-negative{% endif %}">{% if obj.tipo == 'INGRESO' %}+{% else %}−{% endif %} S/ {{ obj.monto|floatformat:2 }}</td><td><a href="{% url 'movimiento_editar' obj.pk %}">Editar</a></td></tr>{% empty %}<tr><td colspan="7"><div class="mini-empty">No hay movimientos para estos filtros.</div></td></tr>{% endfor %}
+        </tbody></table></div>
+    </article>
+    <article class="panel"><div class="panel-header"><div><p class="section-kicker">Análisis</p><h2>Principales egresos</h2></div></div><div class="category-bars">{% for item in categorias %}<div class="category-row"><div><span><i class="tiny-dot" style="background:{{ item.categoria__color }}"></i>{{ item.categoria__nombre }}</span><strong>S/ {{ item.total|floatformat:2 }}</strong></div><div class="progress-track"><span style="width:{{ item.porcentaje }}%;background:{{ item.categoria__color }}"></span></div></div>{% empty %}<div class="compact-empty"><span class="empty-icon small"><svg><use href="#i-chart"/></svg></span><p>Sin egresos en este periodo.</p></div>{% endfor %}</div></article>
+</section>
+{% endblock %}

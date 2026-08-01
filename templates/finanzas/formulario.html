@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block heading %}{{ titulo }}{% endblock %}
+{% block top_action %}{% endblock %}
+{% block content %}
+<div class="form-layout"><div class="form-copy"><span class="form-icon"><svg><use href="#i-empty"/></svg></span><h2>Información clara y precisa</h2><p>Completa los datos para mantener tu información financiera organizada y tus reportes actualizados.</p><ul><li>Los campos visibles son privados.</li><li>Puedes editar el registro después.</li><li>Los importes se guardan con dos decimales.</li></ul></div><div class="panel form-panel"><form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}<div class="form-grid">{% for field in form %}<div class="form-group {% if field.name == 'descripcion' or field.name == 'notas' or field.name == 'comprobante' %}wide{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<b>*</b>{% endif %}</label>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>{% for error in form.non_field_errors %}<div class="field-error">{{ error }}</div>{% endfor %}<div class="actions"><a class="btn btn-light" href="{% url volver %}">Cancelar</a><button class="btn btn-primary" type="submit">Guardar información</button></div></form></div></div>
+{% endblock %}
