@@ -6,14 +6,23 @@
 
 /* Navigation icon system */
 .svg-sprite{position:absolute;width:0;height:0;overflow:hidden}
-nav a{gap:10px;min-height:46px;padding:7px 9px;border-radius:11px;transition:background-color .18s ease,color .18s ease,transform .18s ease}
+nav a{gap:10px;min-height:46px;padding:7px 9px;border-radius:11px;transition:background-color .18s ease,color .18s ease}
 nav .nav-icon{display:grid;flex:0 0 30px;width:30px;height:30px;place-items:center;border:1px solid rgba(148,163,184,.14);border-radius:9px;background:rgba(255,255,255,.035);color:#94a3b8;transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease}
 nav .nav-icon svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;shape-rendering:geometricPrecision}
 nav .nav-icon svg *{vector-effect:non-scaling-stroke}
-nav a:hover{background:rgba(49,94,251,.14);color:#fff;transform:translateX(2px)}
+nav a:hover{background:rgba(49,94,251,.14);color:#fff}
 nav a:hover .nav-icon{border-color:rgba(129,153,255,.38);background:rgba(49,94,251,.12);color:#b8c6ff}
 nav a.active{background:rgba(49,94,251,.22);color:#fff}
 nav a.active .nav-icon{border-color:#5579ff;background:var(--primary);color:#fff;box-shadow:0 5px 14px rgba(49,94,251,.28)}
 nav a:focus-visible{outline:2px solid #8ba3ff;outline-offset:2px}
 nav a:focus-visible .nav-icon{border-color:#aab9ff;color:#fff}
-@media(max-width:760px){.sidebar nav a{min-height:42px;padding:6px 9px}.sidebar nav .nav-icon{flex-basis:28px;width:28px;height:28px}.sidebar nav .nav-icon svg{width:16px;height:16px}.sidebar nav a:hover{transform:none}}
+@media(max-width:760px){.sidebar nav a{min-height:42px;padding:6px 9px}.sidebar nav .nav-icon{flex-basis:28px;width:28px;height:28px}.sidebar nav .nav-icon svg{width:16px;height:16px}}
+
+/* Form typography and compact color control */
+.form-grid label{font-size:12px;font-weight:600;line-height:1.35}
+.form-grid input:not([type="color"]),.form-grid select,.form-grid textarea{font-size:13px;font-weight:400;line-height:1.45}
+dialog footer .btn{font-size:12px;font-weight:600}
+.form-grid input[type="color"]{display:block;width:52px;min-height:36px;height:36px;margin-top:8px;padding:3px;border-radius:9px;background:#fff;cursor:pointer}
+.form-grid input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+.form-grid input[type="color"]::-webkit-color-swatch{border:0;border-radius:6px}
+.form-grid input[type="color"]::-moz-color-swatch{border:0;border-radius:6px}
