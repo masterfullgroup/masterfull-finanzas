@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#315efb">
+  <title>Masterfull Finanzas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div id="toast" class="toast" role="status"></div>
+  <section id="auth" class="auth-view hidden">
+    <main class="auth-card">
+      <div class="brand"><span class="brand-mark">M</span><span><strong>Masterfull</strong><small>Finanzas personales</small></span></div>
+      <p class="eyebrow">TU ESPACIO FINANCIERO</p>
+      <h1 id="auth-title">Bienvenido de nuevo</h1>
+      <p id="auth-copy">Ingresa para continuar organizando tus finanzas.</p>
+      <form id="auth-form">
+        <label>Correo electrónico<input id="auth-email" type="email" required autocomplete="email"></label>
+        <label>Contraseña<input id="auth-password" type="password" required minlength="6" autocomplete="current-password"></label>
+        <button class="btn primary full" type="submit">Iniciar sesión</button>
+      </form>
+      <button id="auth-toggle" class="text-button" type="button">¿No tienes cuenta? Crear cuenta</button>
+    </main>
+  </section>
+
+  <div id="app" class="app-shell hidden">
+    <aside class="sidebar">
+      <a class="brand sidebar-brand" href="#resumen"><span class="brand-mark">M</span><span><strong>Masterfull</strong><small>Finanzas personales</small></span></a>
+      <nav id="navigation"></nav>
+      <div class="profile"><span id="avatar" class="avatar">M</span><span><strong id="profile-name">Mi cuenta</strong><small id="profile-mode">Cuenta personal</small></span><button id="logout" title="Cerrar sesión">↪</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><p id="page-eyebrow" class="eyebrow">PANEL FINANCIERO</p><h1 id="page-title">Resumen</h1></div>
+        <div class="top-actions"><span id="today" class="date-chip"></span><button id="add-main" class="btn primary">＋ Nuevo registro</button></div>
+      </header>
+      <div id="content"></div>
+    </main>
+  </div>
+
+  <dialog id="record-dialog">
+    <form id="record-form" method="dialog">
+      <header><div><p class="eyebrow">NUEVO REGISTRO</p><h2 id="dialog-title">Registrar</h2></div><button class="icon-btn" value="cancel" formnovalidate>×</button></header>
+      <div id="form-fields" class="form-grid"></div>
+      <footer><button class="btn secondary" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" id="save-record" value="default">Guardar</button></footer>
+    </form>
+  </dialog>
+</body>
+</html>
