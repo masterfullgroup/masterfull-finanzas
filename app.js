@@ -1,8 +1,8 @@
 /* Masterfull Finanzas · SPA para GitHub Pages + Supabase */
 const NAV = [
-  ['PRINCIPAL'],['resumen','▦','Resumen'],['personas','◉','Personas'],['movimientos','⇄','Movimientos'],
-  ['GESTIÓN'],['cuentas','▣','Cuentas'],['tarjetas','▤','Tarjetas'],['presupuestos','▧','Presupuestos'],['categorias','◆','Categorías'],
-  ['PLANIFICACIÓN'],['metas','◎','Metas de ahorro'],['deudas','$','Deudas'],['recurrentes','↻','Recurrentes'],['flujo','↕','Flujo mensual'],['reportes','▥','Reportes']
+  ['PRINCIPAL'],['resumen','dashboard','Resumen'],['personas','users','Personas'],['movimientos','transfer','Movimientos'],
+  ['GESTIÓN'],['cuentas','wallet','Cuentas'],['tarjetas','card','Tarjetas'],['presupuestos','budget','Presupuestos'],['categorias','tag','Categorías'],
+  ['PLANIFICACIÓN'],['metas','target','Metas de ahorro'],['deudas','debt','Deudas'],['recurrentes','repeat','Recurrentes'],['flujo','calendar','Flujo mensual'],['reportes','chart','Reportes']
 ];
 const META = {
   personas:{title:'Personas',eye:'PERFILES DEL HOGAR',singular:'persona'}, movimientos:{title:'Movimientos',eye:'INGRESOS Y EGRESOS',singular:'movimiento'},
@@ -37,7 +37,7 @@ function todayISO(){return new Date().toISOString().slice(0,10)} function monthI
 function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function toast(msg){const e=$('#toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2600)}
 function configured(){const c=window.MASTERFULL_CONFIG||{};return /^https:\/\/.+\.supabase\.co$/.test(c.supabaseUrl||'')&&!!c.supabaseAnonKey}
-function navHTML(){return NAV.map(x=>x.length===1?`<small>${x[0]}</small>`:`<a href="#${x[0]}" data-page="${x[0]}"><span class="nav-icon">${x[1]}</span>${x[2]}</a>`).join('')}
+function navHTML(){return NAV.map(x=>x.length===1?`<small>${x[0]}</small>`:`<a href="#${x[0]}" data-page="${x[0]}"><span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-${x[1]}"></use></svg></span>${x[2]}</a>`).join('')}
 async function boot(){ $('#navigation').innerHTML=navHTML(); $('#today').textContent=new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'short',year:'numeric'}).format(new Date()); bind();
   if(!configured()){state.demo=true;state.user={id:'demo',email:'modo@demostracion.pe',user_metadata:{full_name:'Modo demostración'}};loadDemo();showApp();return}
   sb=window.supabase.createClient(window.MASTERFULL_CONFIG.supabaseUrl,window.MASTERFULL_CONFIG.supabaseAnonKey);const {data}=await sb.auth.getSession();if(data.session){state.user=data.session.user;await loadAll();showApp()}else showAuth();sb.auth.onAuthStateChange(async(_,session)=>{if(session){state.user=session.user;await loadAll();showApp()}else showAuth()})}
