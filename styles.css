@@ -67,3 +67,28 @@ td{font-size:12.5px;line-height:1.45}
 
 @media(max-width:900px){.account-summary{grid-template-columns:1fr 1fr}.account-filters{grid-template-columns:1fr 1fr}.account-card{grid-template-columns:42px 1fr}.account-balance{text-align:left}.account-actions{grid-column:1/-1;justify-content:flex-start}}
 @media(max-width:560px){.account-summary,.account-filters{grid-template-columns:1fr}.account-card{grid-template-columns:36px 1fr;padding:13px}.account-icon{width:36px;height:36px}.account-actions button{min-height:38px}.account-filters .btn{width:100%}}
+
+/* Legibilidad general y formularios esenciales */
+body{font-size:15px;line-height:1.5}
+.brand strong{font-size:16px}.brand small{font-size:11.5px}
+nav a{font-size:13px}.profile strong{font-size:12.5px}.profile small{font-size:11px}
+.topbar h1{font-size:26px}.eyebrow,.overline{font-size:11px}.date-chip{font-size:13px}
+.btn{min-height:42px;font-size:13px}.caption{font-size:13px;line-height:1.55}
+.hero-card h2,.panel h2,.section-head h2{font-size:18px}.insight-card p{font-size:13px}
+.cashflow span{font-size:11.5px}.cashflow strong{font-size:15px}
+.stat-card span{font-size:12.5px}.stat-card strong{font-size:22px}
+.link-button,.text-button{font-size:12.5px}.transaction-info strong{font-size:14px}.transaction-info small{font-size:12px}
+.category-row>div{font-size:13px}.amount{font-size:14px}
+th{font-size:11.5px}td{font-size:13.5px}.badge{font-size:11.5px}.actions button{font-size:12.5px}
+.empty{font-size:13.5px}.filters input,.filters select{font-size:13px}.item-card h3{font-size:16px}.item-card dl{font-size:13px}
+.auth-card>p:not(.eyebrow){font-size:13px}.auth-card label{font-size:13px}
+dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-size:13px}
+.form-grid input:not([type="color"]),.form-grid select,.form-grid textarea{min-height:46px;font-size:14px}
+.optional-label,.field-help,.table-note{font-size:11.5px}.flow-guidance{font-size:13px;line-height:1.55}
+.account-summary span{font-size:11.5px}.account-summary small{font-size:11px}.account-summary strong{font-size:19px}
+.account-filters input,.account-filters select{height:44px;font-size:13px}
+.account-card{grid-template-columns:minmax(240px,1fr) minmax(130px,auto) auto;gap:18px;padding:14px 18px}
+.account-main strong,.account-balance strong{font-size:15.5px}.account-main small,.account-balance small{margin-top:5px;font-size:12.5px;line-height:1.4}
+.account-actions{gap:4px}.account-actions button{min-height:36px;padding:7px 9px;font-size:12px}
+@media(max-width:900px){.account-card{grid-template-columns:minmax(0,1fr) auto}.account-actions{grid-column:1/-1}.account-balance{text-align:right}}
+@media(max-width:560px){body{font-size:14.5px}.topbar h1{font-size:22px}.account-card{grid-template-columns:1fr;padding:15px}.account-balance{text-align:left}.account-actions{grid-column:auto}.account-actions button{flex:1;min-width:92px}.form-grid{padding:18px}.flow-guidance{font-size:12.5px}}
