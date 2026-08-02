@@ -3,5 +3,95 @@
 {% block heading %}{{ titulo }}{% endblock %}
 {% block top_action %}{% endblock %}
 {% block content %}
-<div class="form-layout"><div class="form-copy"><span class="form-icon"><svg><use href="#i-empty"/></svg></span><h2>Información clara y precisa</h2><p>Completa los datos para mantener tu información financiera organizada y tus reportes actualizados.</p><ul><li>Los campos visibles son privados.</li><li>Puedes editar el registro después.</li><li>Los importes se guardan con dos decimales.</li></ul></div><div class="panel form-panel"><form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}<div class="form-grid">{% for field in form %}<div class="form-group {% if field.name == 'descripcion' or field.name == 'notas' or field.name == 'comprobante' %}wide{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<b>*</b>{% endif %}</label>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>{% for error in form.non_field_errors %}<div class="field-error">{{ error }}</div>{% endfor %}<div class="actions"><a class="btn btn-light" href="{% url volver %}">Cancelar</a><button class="btn btn-primary" type="submit">Guardar información</button></div></form></div></div>
+<style>
+.payment-guidance { margin-bottom: 18px; padding: 13px 15px; border: 1px solid #cbdafe; border-radius: 10px; background: #f3f7ff; color: #294777; font-size: 13px; line-height: 1.5; }
+.form-group[hidden], .payment-guidance[hidden] { display: none; }
+</style>
+<div class="form-layout">
+    <div class="form-copy">
+        <span class="form-icon"><svg><use href="#i-empty"/></svg></span>
+        <h2>Información clara y precisa</h2>
+        <p>Completa los datos para mantener tu información financiera organizada y tus reportes actualizados.</p>
+        <ul><li>Los campos visibles son privados.</li><li>Puedes editar el registro después.</li><li>Los importes se guardan con dos decimales.</li></ul>
+    </div>
+    <div class="panel form-panel">
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            <div id="payment-guidance" class="payment-guidance" hidden></div>
+            <div class="form-grid">
+                {% for field in form %}
+                <div class="form-group {% if field.name == 'descripcion' or field.name == 'notas' or field.name == 'comprobante' %}wide{% endif %}" data-field="{{ field.name }}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<b>*</b>{% endif %}</label>
+                    {{ field }}
+                    {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                    {% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            {% for error in form.non_field_errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+            <div class="actions"><a class="btn btn-light" href="{% url volver %}">Cancelar</a><button class="btn btn-primary" type="submit">Guardar información</button></div>
+        </form>
+    </div>
+</div>
+<script>
+(function () {
+    const form = document.querySelector('.form-panel form');
+    if (!form) return;
+    const group = (name) => form.querySelector(`[data-field="${name}"]`);
+    const setVisible = (name, visible) => {
+        const element = group(name);
+        if (!element) return;
+        element.hidden = !visible;
+        element.querySelectorAll('input, select, textarea').forEach((control) => control.disabled = !visible);
+    };
+
+    const payment = form.querySelector('#id_medio_pago');
+    const card = form.querySelector('#id_tarjeta_credito');
+    const guidance = form.querySelector('#payment-guidance');
+    function updatePaymentFlow() {
+        if (!payment) return;
+        const isCredit = payment.value === 'TARJETA_CREDITO';
+        const isDebit = payment.value === 'TARJETA_DEBITO';
+        const usesCard = isCredit || isDebit;
+        setVisible('cuenta', !usesCard);
+        setVisible('tarjeta_credito', usesCard);
+        setVisible('numero_cuotas', isCredit);
+        if (card) {
+            Array.from(card.options).forEach((option) => {
+                const type = option.dataset.tipoTarjeta;
+                const allowed = !type || (isCredit && type === 'CREDITO') || (isDebit && type === 'DEBITO');
+                option.hidden = !allowed;
+                option.disabled = !allowed;
+                if (option.selected && !allowed) card.value = '';
+            });
+        }
+        if (guidance) {
+            guidance.hidden = false;
+            guidance.textContent = isCredit
+                ? 'Compra a crédito: selecciona la tarjeta. El monto aumentará su deuda y no descontará ninguna cuenta hasta que registres el pago.'
+                : isDebit
+                    ? 'Compra con débito: selecciona la tarjeta. El monto se descontará automáticamente de su cuenta bancaria vinculada.'
+                    : 'Movimiento directo: selecciona la cuenta de donde sale el dinero o donde ingresa.';
+        }
+    }
+    payment?.addEventListener('change', updatePaymentFlow);
+    updatePaymentFlow();
+
+    const cardType = form.querySelector('#id_tipo');
+    function updateCardFlow() {
+        if (!cardType || !group('cuenta_vinculada')) return;
+        const isDebit = cardType.value === 'DEBITO';
+        setVisible('cuenta_vinculada', isDebit);
+        ['linea_credito', 'saldo_inicial_usado', 'dia_cierre', 'dia_pago', 'tasa_interes_anual'].forEach((name) => setVisible(name, !isDebit));
+        if (guidance) {
+            guidance.hidden = false;
+            guidance.textContent = isDebit
+                ? 'Tarjeta de débito: vincúlala a la cuenta bancaria cuyo saldo debe descontarse con cada compra.'
+                : 'Tarjeta de crédito: las compras aumentan la deuda; la cuenta bancaria solo se descuenta al registrar un pago.';
+        }
+    }
+    cardType?.addEventListener('change', updateCardFlow);
+    updateCardFlow();
+})();
+</script>
 {% endblock %}

@@ -17,6 +17,18 @@ from .models import (
 )
 
 
+class TarjetaSelect(forms.Select):
+    """Expone el tipo de tarjeta para filtrar las opciones en la interfaz."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(
+            name, value, label, selected, index, subindex=subindex, attrs=attrs
+        )
+        if value and hasattr(value, "instance"):
+            option["attrs"]["data-tipo-tarjeta"] = value.instance.tipo
+        return option
+
+
 class RegistroForm(UserCreationForm):
     first_name = forms.CharField(label="Nombres", max_length=150)
     last_name = forms.CharField(label="Apellidos", max_length=150)
@@ -124,8 +136,10 @@ class TarjetaCreditoForm(forms.ModelForm):
     class Meta:
         model = TarjetaCredito
         fields = [
+            "tipo",
             "nombre",
             "entidad",
+            "cuenta_vinculada",
             "linea_credito",
             "saldo_inicial_usado",
             "dia_cierre",
@@ -178,6 +192,55 @@ class TarjetaCreditoForm(forms.ModelForm):
             ),
         }
 
+    def __init__(self, *args, usuario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if usuario:
+            self.fields["cuenta_vinculada"].queryset = Cuenta.objects.filter(
+                usuario=usuario,
+                activa=True,
+            )
+
+        self.fields["tipo"].label = "Tipo de tarjeta"
+        self.fields["cuenta_vinculada"].label = "Cuenta bancaria vinculada"
+        self.fields["linea_credito"].label = "Línea de crédito"
+        self.fields["saldo_inicial_usado"].label = "Deuda inicial utilizada"
+        self.fields["dia_cierre"].label = "Día de cierre"
+        self.fields["dia_pago"].label = "Día límite de pago"
+        for name in (
+            "cuenta_vinculada",
+            "linea_credito",
+            "saldo_inicial_usado",
+            "dia_cierre",
+            "dia_pago",
+            "tasa_interes_anual",
+        ):
+            self.fields[name].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        tipo = cleaned_data.get("tipo")
+        if tipo == "DEBITO":
+            if not cleaned_data.get("cuenta_vinculada"):
+                self.add_error(
+                    "cuenta_vinculada",
+                    "Selecciona la cuenta cuyo saldo descontará esta tarjeta.",
+                )
+            cleaned_data["linea_credito"] = None
+            cleaned_data["saldo_inicial_usado"] = 0
+            cleaned_data["dia_cierre"] = None
+            cleaned_data["dia_pago"] = None
+            cleaned_data["tasa_interes_anual"] = 0
+        elif tipo == "CREDITO":
+            cleaned_data["cuenta_vinculada"] = None
+            for name, message in (
+                ("linea_credito", "Indica la línea de crédito."),
+                ("dia_cierre", "Indica el día de cierre."),
+                ("dia_pago", "Indica el día límite de pago."),
+            ):
+                if not cleaned_data.get(name):
+                    self.add_error(name, message)
+        return cleaned_data
+
 class MovimientoForm(forms.ModelForm):
     class Meta:
         model = Movimiento
@@ -196,6 +259,7 @@ class MovimientoForm(forms.ModelForm):
             "comprobante",
         ]
         widgets = {
+            "tarjeta_credito": TarjetaSelect(),
             "monto": forms.NumberInput(
                 attrs={
                     "step": "0.01",
@@ -257,6 +321,17 @@ class MovimientoForm(forms.ModelForm):
         self.fields["persona"].required = False
         self.fields["tarjeta_credito"].required = False
         self.fields["comprobante"].required = False
+        self.fields["numero_cuotas"].required = False
+        self.fields["medio_pago"].label = "Forma de pago"
+        self.fields["cuenta"].label = "Cuenta de origen o destino"
+        self.fields["cuenta"].help_text = (
+            "Se usa cuando el dinero sale o ingresa directamente en una cuenta."
+        )
+        self.fields["tarjeta_credito"].label = "Tarjeta utilizada"
+        self.fields["tarjeta_credito"].help_text = (
+            "La entidad y la cuenta vinculada se toman de la tarjeta seleccionada."
+        )
+        self.fields["numero_cuotas"].label = "Número de cuotas"
 
     def clean(self):
         cleaned_data = super().clean()
@@ -274,20 +349,43 @@ class MovimientoForm(forms.ModelForm):
                 "La categoría no corresponde al tipo de movimiento.",
             )
 
-        if medio_pago == "TARJETA_CREDITO":
+        if medio_pago in ("TARJETA_CREDITO", "TARJETA_DEBITO"):
             if tipo != "GASTO":
                 self.add_error(
                     "medio_pago",
-                    "La tarjeta de crédito solo puede usarse en gastos.",
+                    "Las tarjetas solo pueden usarse para registrar gastos.",
                 )
 
             if not tarjeta_credito:
                 self.add_error(
                     "tarjeta_credito",
-                    "Selecciona la tarjeta de crédito utilizada.",
+                    "Selecciona la tarjeta utilizada.",
                 )
 
-            cleaned_data["cuenta"] = None
+            tipo_esperado = "CREDITO" if medio_pago == "TARJETA_CREDITO" else "DEBITO"
+            if tarjeta_credito and tarjeta_credito.tipo != tipo_esperado:
+                self.add_error(
+                    "tarjeta_credito",
+                    f"Selecciona una tarjeta de {tipo_esperado.lower()}.",
+                )
+
+            if medio_pago == "TARJETA_CREDITO":
+                cleaned_data["cuenta"] = None
+            elif tarjeta_credito and tarjeta_credito.cuenta_vinculada:
+                cleaned_data["cuenta"] = tarjeta_credito.cuenta_vinculada
+            elif tarjeta_credito:
+                self.add_error(
+                    "tarjeta_credito",
+                    "Esta tarjeta de débito no tiene una cuenta vinculada.",
+                )
+
+            if medio_pago == "TARJETA_DEBITO" and numero_cuotas > 1:
+                self.add_error(
+                    "numero_cuotas",
+                    "Las cuotas solo pueden utilizarse con tarjeta de crédito.",
+                )
+            if medio_pago == "TARJETA_DEBITO":
+                cleaned_data["numero_cuotas"] = 1
 
         else:
             if not cuenta:
@@ -301,7 +399,7 @@ class MovimientoForm(forms.ModelForm):
                     "tarjeta_credito",
                     (
                         "No selecciones una tarjeta si el medio de pago "
-                        "no es tarjeta de crédito."
+                        "no corresponde a una tarjeta."
                     ),
                 )
 
@@ -313,6 +411,7 @@ class MovimientoForm(forms.ModelForm):
                         "tarjeta de crédito."
                     ),
                 )
+            cleaned_data["numero_cuotas"] = 1
 
         return cleaned_data
 
@@ -427,6 +526,7 @@ class PagoTarjetaForm(forms.ModelForm):
                 TarjetaCredito.objects.filter(
                     usuario=usuario,
                     activa=True,
+                    tipo="CREDITO",
                 )
             )
 
@@ -476,6 +576,7 @@ class GastoRecurrenteForm(forms.ModelForm):
             "activo",
         ]
         widgets = {
+            "tarjeta_credito": TarjetaSelect(),
             "nombre": forms.TextInput(
                 attrs={
                     "placeholder": "Ejemplo: Internet del hogar",
@@ -527,14 +628,28 @@ class GastoRecurrenteForm(forms.ModelForm):
         cuenta = cleaned_data.get("cuenta")
         tarjeta_credito = cleaned_data.get("tarjeta_credito")
 
-        if medio_pago == "TARJETA_CREDITO":
+        if medio_pago in ("TARJETA_CREDITO", "TARJETA_DEBITO"):
             if not tarjeta_credito:
                 self.add_error(
                     "tarjeta_credito",
-                    "Selecciona una tarjeta de crédito.",
+                    "Selecciona la tarjeta utilizada.",
                 )
 
-            cleaned_data["cuenta"] = None
+            tipo_esperado = "CREDITO" if medio_pago == "TARJETA_CREDITO" else "DEBITO"
+            if tarjeta_credito and tarjeta_credito.tipo != tipo_esperado:
+                self.add_error(
+                    "tarjeta_credito",
+                    f"Selecciona una tarjeta de {tipo_esperado.lower()}.",
+                )
+            if medio_pago == "TARJETA_CREDITO":
+                cleaned_data["cuenta"] = None
+            elif tarjeta_credito and tarjeta_credito.cuenta_vinculada:
+                cleaned_data["cuenta"] = tarjeta_credito.cuenta_vinculada
+            elif tarjeta_credito:
+                self.add_error(
+                    "tarjeta_credito",
+                    "Esta tarjeta de débito no tiene una cuenta vinculada.",
+                )
 
         else:
             if not cuenta:

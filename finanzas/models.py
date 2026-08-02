@@ -132,6 +132,10 @@ class Cuenta(models.Model):
 
 
 class TarjetaCredito(models.Model):
+    TIPO_CHOICES = [
+        ("CREDITO", "Crédito"),
+        ("DEBITO", "Débito"),
+    ]
     ENTIDAD_CHOICES = [
         ("OH", "Financiera OH!"),
         ("CMR", "CMR Falabella"),
@@ -147,6 +151,11 @@ class TarjetaCredito(models.Model):
         on_delete=models.CASCADE,
         related_name="tarjetas_credito",
     )
+    tipo = models.CharField(
+        max_length=10,
+        choices=TIPO_CHOICES,
+        default="CREDITO",
+    )
     nombre = models.CharField(
         max_length=100,
         help_text="Ejemplo: Tarjeta CMR principal",
@@ -159,6 +168,8 @@ class TarjetaCredito(models.Model):
         max_digits=14,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))],
+        null=True,
+        blank=True,
     )
     saldo_inicial_usado = models.DecimalField(
         max_digits=14,
@@ -170,13 +181,17 @@ class TarjetaCredito(models.Model):
         validators=[
             MinValueValidator(1),
             MaxValueValidator(31),
-        ]
+        ],
+        null=True,
+        blank=True,
     )
     dia_pago = models.PositiveSmallIntegerField(
         validators=[
             MinValueValidator(1),
             MaxValueValidator(31),
-        ]
+        ],
+        null=True,
+        blank=True,
     )
     tasa_interes_anual = models.DecimalField(
         max_digits=7,
@@ -186,16 +201,43 @@ class TarjetaCredito(models.Model):
     )
     moneda = models.CharField(max_length=3, default="PEN")
     activa = models.BooleanField(default=True)
+    cuenta_vinculada = models.ForeignKey(
+        Cuenta,
+        on_delete=models.PROTECT,
+        related_name="tarjetas_debito",
+        null=True,
+        blank=True,
+        help_text="Cuenta cuyo saldo se descuenta al usar una tarjeta de débito.",
+    )
     creada = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["entidad", "nombre"]
 
     def __str__(self):
-        return self.nombre
+        return f"{self.nombre} · {self.get_entidad_display()} ({self.get_tipo_display()})"
+
+    def clean(self):
+        errores = {}
+        if self.tipo == "DEBITO":
+            if not self.cuenta_vinculada:
+                errores["cuenta_vinculada"] = (
+                    "Selecciona la cuenta bancaria vinculada a esta tarjeta."
+                )
+        else:
+            if not self.linea_credito:
+                errores["linea_credito"] = "Indica la línea de crédito."
+            if not self.dia_cierre:
+                errores["dia_cierre"] = "Indica el día de cierre."
+            if not self.dia_pago:
+                errores["dia_pago"] = "Indica el día de pago."
+        if errores:
+            raise ValidationError(errores)
 
     @property
     def saldo_utilizado(self):
+        if self.tipo != "CREDITO":
+            return Decimal("0")
         compras = self.movimientos.filter(
             tipo="GASTO",
             medio_pago="TARJETA_CREDITO",
@@ -212,6 +254,8 @@ class TarjetaCredito(models.Model):
 
     @property
     def credito_disponible(self):
+        if self.tipo != "CREDITO" or self.linea_credito is None:
+            return Decimal("0")
         return max(
             Decimal("0"),
             self.linea_credito - self.saldo_utilizado,
@@ -219,7 +263,7 @@ class TarjetaCredito(models.Model):
 
     @property
     def porcentaje_utilizado(self):
-        if self.linea_credito <= 0:
+        if not self.linea_credito or self.linea_credito <= 0:
             return 0
 
         porcentaje = (
@@ -327,25 +371,43 @@ class Movimiento(models.Model):
                 "al tipo de movimiento."
             )
 
-        if self.medio_pago == "TARJETA_CREDITO":
+        if self.medio_pago in ("TARJETA_CREDITO", "TARJETA_DEBITO"):
+            if self.medio_pago == "TARJETA_CREDITO":
+                self.cuenta = None
+            elif self.tarjeta_credito and self.tarjeta_credito.cuenta_vinculada:
+                self.cuenta = self.tarjeta_credito.cuenta_vinculada
+
             if self.tipo != "GASTO":
                 errores["medio_pago"] = (
-                    "La tarjeta de crédito solo puede usarse "
-                    "para registrar gastos."
+                    "Las tarjetas solo pueden usarse para registrar gastos."
                 )
 
             if not self.tarjeta_credito:
+                errores["tarjeta_credito"] = "Debes seleccionar la tarjeta utilizada."
+
+            tipo_esperado = (
+                "CREDITO" if self.medio_pago == "TARJETA_CREDITO" else "DEBITO"
+            )
+            if self.tarjeta_credito and self.tarjeta_credito.tipo != tipo_esperado:
                 errores["tarjeta_credito"] = (
-                    "Debes seleccionar una tarjeta de crédito."
+                    f"Selecciona una tarjeta de {tipo_esperado.lower()}."
                 )
 
+            if self.medio_pago == "TARJETA_DEBITO" and self.tarjeta_credito:
+                if not self.tarjeta_credito.cuenta_vinculada:
+                    errores["tarjeta_credito"] = (
+                        "Esta tarjeta de débito no tiene una cuenta vinculada."
+                    )
+                elif self.cuenta_id != self.tarjeta_credito.cuenta_vinculada_id:
+                    errores["cuenta"] = (
+                        "La cuenta debe ser la vinculada a la tarjeta de débito."
+                    )
         elif self.tarjeta_credito:
             errores["tarjeta_credito"] = (
-                "Solo debes seleccionar una tarjeta cuando el "
-                "medio de pago sea tarjeta de crédito."
+                "Solo debes seleccionar una tarjeta cuando el medio de pago sea una tarjeta."
             )
 
-        if self.medio_pago != "TARJETA_CREDITO" and not self.cuenta:
+        if self.medio_pago not in ("TARJETA_CREDITO", "TARJETA_DEBITO") and not self.cuenta:
             errores["cuenta"] = (
                 "Debes seleccionar la cuenta desde la que "
                 "se realizó el movimiento."
@@ -530,15 +592,33 @@ class GastoRecurrente(models.Model):
                 "El gasto recurrente debe usar una categoría de gasto."
             )
 
-        if self.medio_pago == "TARJETA_CREDITO":
+        if self.medio_pago in ("TARJETA_CREDITO", "TARJETA_DEBITO"):
+            if self.medio_pago == "TARJETA_CREDITO":
+                self.cuenta = None
+            elif self.tarjeta_credito and self.tarjeta_credito.cuenta_vinculada:
+                self.cuenta = self.tarjeta_credito.cuenta_vinculada
+
             if not self.tarjeta_credito:
                 errores["tarjeta_credito"] = (
-                    "Debes seleccionar una tarjeta de crédito."
+                    "Debes seleccionar la tarjeta utilizada."
                 )
-        elif not self.cuenta:
-            errores["cuenta"] = (
-                "Debes seleccionar la cuenta desde donde se pagará."
+
+            tipo_esperado = (
+                "CREDITO" if self.medio_pago == "TARJETA_CREDITO" else "DEBITO"
             )
+            if self.tarjeta_credito and self.tarjeta_credito.tipo != tipo_esperado:
+                errores["tarjeta_credito"] = (
+                    f"Selecciona una tarjeta de {tipo_esperado.lower()}."
+                )
+        else:
+            if not self.cuenta:
+                errores["cuenta"] = (
+                    "Debes seleccionar la cuenta desde donde se pagará."
+                )
+            if self.tarjeta_credito:
+                errores["tarjeta_credito"] = (
+                    "No selecciones una tarjeta para este medio de pago."
+                )
 
         if errores:
             raise ValidationError(errores)

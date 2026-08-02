@@ -283,7 +283,7 @@ def categoria_editar(request, pk):
 
 
 # =========================================================
-# TARJETAS DE CRÉDITO
+# TARJETAS
 # =========================================================
 
 @login_required
@@ -296,7 +296,7 @@ def tarjetas_lista(request):
         request,
         "finanzas/lista_generica.html",
         {
-            "titulo": "Tarjetas de crédito",
+            "titulo": "Tarjetas",
             "objetos": objetos,
             "tipo_lista": "tarjetas",
             "crear_url": "tarjeta_crear",
@@ -309,8 +309,9 @@ def tarjeta_crear(request):
     return formulario_simple(
         request=request,
         form_class=TarjetaCreditoForm,
-        titulo="Nueva tarjeta de crédito",
+        titulo="Nueva tarjeta",
         redireccion="tarjetas_lista",
+        usar_usuario=True,
     )
 
 
@@ -325,9 +326,10 @@ def tarjeta_editar(request, pk):
     return formulario_simple(
         request=request,
         form_class=TarjetaCreditoForm,
-        titulo="Editar tarjeta de crédito",
+        titulo="Editar tarjeta",
         redireccion="tarjetas_lista",
         instance=tarjeta,
+        usar_usuario=True,
     )
 
 
