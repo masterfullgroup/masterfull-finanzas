@@ -21,6 +21,7 @@ nav a:focus-visible .nav-icon{border-color:#aab9ff;color:#fff}
 /* Form typography and compact color control */
 .form-grid label{font-size:12px;font-weight:600;line-height:1.35}
 .form-grid input:not([type="color"]),.form-grid select,.form-grid textarea{font-size:13px;font-weight:400;line-height:1.45}
+dialog footer{gap:12px}
 dialog footer .btn{font-size:12px;font-weight:600}
 .form-grid input[type="color"]{display:block;width:52px;min-height:36px;height:36px;margin-top:8px;padding:3px;border-radius:9px;background:#fff;cursor:pointer}
 .form-grid input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
