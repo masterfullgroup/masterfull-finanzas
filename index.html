@@ -8,10 +8,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260802-4">
+  <link rel="stylesheet" href="styles.css?v=20260802-5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=20260802-4"></script>
-  <script src="app.js?v=20260802-4" defer></script>
+  <script src="app.js?v=20260802-5" defer></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
@@ -70,14 +70,12 @@
   </dialog>
   <dialog id="quick-owner-dialog" class="quick-dialog">
     <form id="quick-owner-form" method="dialog">
-      <header><div><p class="eyebrow">NUEVO PROPIETARIO</p><h2>Agregar propietario</h2></div><button class="icon-btn" value="cancel" formnovalidate aria-label="Cerrar">×</button></header>
+      <header><div><p class="eyebrow">NUEVO TITULAR</p><h2>Agregar titular</h2></div><button class="icon-btn" value="cancel" formnovalidate aria-label="Cerrar">×</button></header>
       <div class="form-grid">
-        <label>Nombre *<input name="nombre" maxlength="80" required placeholder="Ejemplo: Familia López"></label>
+        <label>Nombre *<input name="nombre" maxlength="80" required placeholder="Ejemplo: Miriam o Familia López"></label>
         <label>Tipo *<select name="tipo" required><option value="PERSONA">Persona</option><option value="EMPRESA">Empresa</option><option value="COMPARTIDA">Compartida</option></select></label>
-        <label>Color <input name="color" type="color" value="#315efb"></label>
-        <label>Icono <select name="icono"><option value="PERSONA">Persona</option><option value="FAMILIA">Familia</option><option value="EMPRESA">Empresa</option><option value="HOGAR">Hogar</option></select></label>
       </div>
-      <footer><button class="btn secondary" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="default">Agregar propietario</button></footer>
+      <footer><button class="btn secondary" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="default">Agregar titular</button></footer>
     </form>
   </dialog>
 </body>
