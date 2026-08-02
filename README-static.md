@@ -9,6 +9,8 @@ Esta es la nueva versión estática de Masterfull Finanzas. Conserva los módulo
 3. Completa esos dos valores en `config.js`. No uses nunca `service_role` en GitHub.
 4. En GitHub abre **Settings → Pages**, elige **Deploy from a branch**, rama `main` y carpeta `/ (root)`.
 
+Si la base ya estaba creada, vuelve a ejecutar `schema.sql` después de actualizar la aplicación. El script conserva los datos existentes y agrega de forma idempotente las columnas nuevas para tarjetas de débito/crédito y movimientos.
+
 Sin configuración de Supabase, la aplicación funciona en modo demostración y guarda los cambios únicamente en el navegador mediante `localStorage`.
 
 ## Seguridad

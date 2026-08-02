@@ -15,13 +15,14 @@ create table if not exists public.categorias (
 );
 create table if not exists public.tarjetas (
  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
- nombre text not null, entidad text not null, linea_credito numeric(14,2) not null check(linea_credito>0), saldo_inicial_usado numeric(14,2) default 0 check(saldo_inicial_usado>=0), dia_cierre smallint check(dia_cierre between 1 and 31), dia_pago smallint check(dia_pago between 1 and 31), created_at timestamptz default now()
+ tipo text not null default 'CREDITO' check(tipo in ('CREDITO','DEBITO')), nombre text not null, entidad text not null,
+ cuenta_id uuid references public.cuentas(id) on delete restrict, linea_credito numeric(14,2) check(linea_credito>0), saldo_inicial_usado numeric(14,2) default 0 check(saldo_inicial_usado>=0), dia_cierre smallint check(dia_cierre between 1 and 31), dia_pago smallint check(dia_pago between 1 and 31), created_at timestamptz default now()
 );
 create table if not exists public.movimientos (
  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
  persona_id uuid references public.personas(id) on delete set null, cuenta_id uuid references public.cuentas(id) on delete restrict,
  categoria_id uuid not null references public.categorias(id) on delete restrict, tipo text not null check(tipo in ('INGRESO','GASTO')),
- monto numeric(14,2) not null check(monto>0), fecha date not null, medio_pago text default 'EFECTIVO', descripcion text, notas text,
+ tarjeta_id uuid references public.tarjetas(id) on delete restrict, monto numeric(14,2) not null check(monto>0), fecha date not null, medio_pago text default 'EFECTIVO', numero_cuotas smallint not null default 1 check(numero_cuotas between 1 and 48), descripcion text, notas text,
  created_at timestamptz default now()
 );
 create table if not exists public.presupuestos (
@@ -41,6 +42,13 @@ create table if not exists public.recurrentes (
  nombre text not null, servicio text not null, categoria_id uuid references public.categorias(id) on delete restrict,
  monto_estimado numeric(14,2) not null check(monto_estimado>0), frecuencia text default 'MENSUAL', proxima_fecha date not null, created_at timestamptz default now()
 );
+
+-- Actualización idempotente para instalaciones que ya tienen datos.
+alter table public.tarjetas add column if not exists tipo text not null default 'CREDITO' check(tipo in ('CREDITO','DEBITO'));
+alter table public.tarjetas add column if not exists cuenta_id uuid references public.cuentas(id) on delete restrict;
+alter table public.tarjetas alter column linea_credito drop not null;
+alter table public.movimientos add column if not exists tarjeta_id uuid references public.tarjetas(id) on delete restrict;
+alter table public.movimientos add column if not exists numero_cuotas smallint not null default 1 check(numero_cuotas between 1 and 48);
 
 -- RLS impide que un usuario consulte o modifique registros de otro usuario.
 do $$ declare t text; begin

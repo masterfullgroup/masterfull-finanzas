@@ -55,6 +55,9 @@ td{font-size:12.5px;line-height:1.45}
 
 /* Save feedback */
 .optional-label{margin-left:5px;color:var(--muted);font-size:10.5px;font-weight:500}
+.flow-guidance{grid-column:1/-1;padding:12px 14px;border:1px solid #cbdafe;border-radius:9px;background:#f3f7ff;color:#294777;font-size:11px;line-height:1.5}
+.table-note{display:block;margin-top:4px;color:var(--muted);font-size:10px;font-weight:500}
+.form-grid label[hidden]{display:none}
 #save-record:active{background:#1f43c8}
 #save-record.is-loading{background:#244be1;color:#fff;cursor:wait;opacity:.9}
 #save-record.is-loading::after{width:13px;height:13px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;content:"";animation:save-spin .7s linear infinite}

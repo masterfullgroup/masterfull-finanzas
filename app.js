@@ -15,8 +15,8 @@ const SCHEMAS = {
   personas:[['nombre','Nombre completo','text'],['relacion','Relación','select',['TITULAR','PAREJA','HIJO/A','FAMILIAR','OTRO']],['email','Correo','email'],['telefono','Teléfono','text'],['color','Color','color']],
   cuentas:[['nombre','Nombre de la cuenta','text'],['tipo','Tipo','select',['EFECTIVO','BANCO','YAPE','PLIN','BILLETERA','AHORRO','OTRO']],['saldo_inicial','Saldo inicial','number'],['moneda','Moneda','select',['PEN','USD']]],
   categorias:[['nombre','Nombre','text'],['tipo','Tipo','select',['INGRESO','GASTO']],['color','Color','color']],
-  tarjetas:[['nombre','Nombre de la tarjeta','text'],['entidad','Entidad','select',['OH','CMR','BCP','INTERBANK','BBVA','SCOTIABANK','OTRA']],['linea_credito','Línea de crédito','number'],['saldo_inicial_usado','Saldo utilizado inicial','number'],['dia_cierre','Día de cierre','number'],['dia_pago','Día de pago','number']],
-  movimientos:[['tipo','Tipo','select',['INGRESO','GASTO']],['monto','Monto','number'],['fecha','Fecha','date'],['categoria_id','Categoría','relation','categorias'],['cuenta_id','Cuenta','relation','cuentas'],['persona_id','Persona','relation','personas'],['medio_pago','Medio de pago','select',['EFECTIVO','CUENTA_BANCARIA','YAPE','PLIN','TARJETA_DEBITO','TARJETA_CREDITO','OTRO']],['descripcion','Descripción','text'],['notas','Notas','textarea']],
+  tarjetas:[['tipo','Tipo de tarjeta','select',['CREDITO','DEBITO']],['nombre','Nombre de la tarjeta','text'],['entidad','Entidad emisora','select',['OH','CMR','BCP','INTERBANK','BBVA','SCOTIABANK','OTRA']],['cuenta_id','Cuenta bancaria vinculada','relation','cuentas'],['linea_credito','Línea de crédito','number'],['saldo_inicial_usado','Deuda inicial utilizada','number'],['dia_cierre','Día de cierre','number'],['dia_pago','Día límite de pago','number']],
+  movimientos:[['tipo','Tipo','select',['INGRESO','GASTO']],['monto','Monto','number'],['fecha','Fecha','date'],['categoria_id','Categoría','relation','categorias'],['persona_id','Persona','relation','personas'],['medio_pago','Forma de pago','select',['EFECTIVO','CUENTA_BANCARIA','YAPE','PLIN','TARJETA_DEBITO','TARJETA_CREDITO','OTRO']],['cuenta_id','Cuenta de origen o destino','relation','cuentas'],['tarjeta_id','Tarjeta utilizada','relation','tarjetas'],['numero_cuotas','Número de cuotas','number'],['descripcion','Descripción','text'],['notas','Notas','textarea']],
   presupuestos:[['categoria_id','Categoría de gasto','relation','categorias'],['mes','Mes','month'],['limite','Límite','number']],
   metas:[['nombre','Nombre de la meta','text'],['monto_objetivo','Monto objetivo','number'],['monto_actual','Monto ahorrado','number'],['fecha_objetivo','Fecha objetivo','date']],
   deudas:[['acreedor','Acreedor','text'],['descripcion','Descripción','text'],['monto_total','Monto total','number'],['monto_pagado','Monto pagado','number'],['fecha_vencimiento','Vencimiento','date'],['estado','Estado','select',['PENDIENTE','PAGADA']]],
@@ -26,7 +26,7 @@ const DEMO = {
   personas:[{id:'p1',nombre:'Titular',relacion:'TITULAR',color:'#315efb'}],
   cuentas:[{id:'c1',nombre:'Efectivo',tipo:'EFECTIVO',saldo_inicial:1200,moneda:'PEN'},{id:'c2',nombre:'Yape',tipo:'YAPE',saldo_inicial:350,moneda:'PEN'}],
   categorias:[{id:'ca1',nombre:'Sueldo',tipo:'INGRESO',color:'#17865d'},{id:'ca2',nombre:'Alimentación',tipo:'GASTO',color:'#e27058'},{id:'ca3',nombre:'Servicios',tipo:'GASTO',color:'#8269d8'}],
-  tarjetas:[{id:'t1',nombre:'CMR principal',entidad:'CMR',linea_credito:3000,saldo_inicial_usado:420,dia_cierre:15,dia_pago:5}],
+  tarjetas:[{id:'t1',tipo:'CREDITO',nombre:'CMR principal',entidad:'CMR',cuenta_id:null,linea_credito:3000,saldo_inicial_usado:420,dia_cierre:15,dia_pago:5}],
   movimientos:[{id:'m1',tipo:'INGRESO',monto:2200,fecha:todayISO(),categoria_id:'ca1',cuenta_id:'c1',persona_id:'p1',medio_pago:'CUENTA_BANCARIA',descripcion:'Ingreso mensual'},{id:'m2',tipo:'GASTO',monto:185,fecha:todayISO(),categoria_id:'ca2',cuenta_id:'c1',persona_id:'p1',medio_pago:'EFECTIVO',descripcion:'Compra semanal'}],
   presupuestos:[{id:'pr1',categoria_id:'ca2',mes:todayISO().slice(0,7),limite:700}], metas:[{id:'me1',nombre:'Fondo de emergencia',monto_objetivo:5000,monto_actual:1200,fecha_objetivo:''}],
   deudas:[{id:'d1',acreedor:'Compra personal',descripcion:'',monto_total:900,monto_pagado:300,estado:'PENDIENTE'}], recurrentes:[{id:'r1',nombre:'Internet hogar',servicio:'INTERNET',categoria_id:'ca3',monto_estimado:89.9,frecuencia:'MENSUAL',proxima_fecha:todayISO()}]
@@ -45,24 +45,67 @@ function bind(){window.addEventListener('hashchange',route);$('#add-main').oncli
 function showAuth(){$('#auth').classList.remove('hidden');$('#app').classList.add('hidden')} function showApp(){$('#auth').classList.add('hidden');$('#app').classList.remove('hidden');const name=state.user?.user_metadata?.full_name||state.user?.email?.split('@')[0]||'Mi cuenta';$('#profile-name').textContent=name;$('#avatar').textContent=name[0].toUpperCase();$('#profile-mode').textContent=state.demo?'Modo demostración':'Datos protegidos';route()}
 function toggleAuth(){authMode=authMode==='login'?'signup':'login';$('#auth-title').textContent=authMode==='login'?'Bienvenido de nuevo':'Crea tu cuenta';$('#auth-copy').textContent=authMode==='login'?'Ingresa para continuar organizando tus finanzas.':'Tus registros estarán separados y protegidos.';$('#auth-form button').textContent=authMode==='login'?'Iniciar sesión':'Crear mi cuenta';$('#auth-toggle').textContent=authMode==='login'?'¿No tienes cuenta? Crear cuenta':'¿Ya tienes cuenta? Iniciar sesión'}
 async function submitAuth(e){e.preventDefault();const email=$('#auth-email').value.trim(),password=$('#auth-password').value;const res=authMode==='login'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});if(res.error)toast(res.error.message);else toast(authMode==='login'?'Sesión iniciada':'Cuenta creada. Revisa tu correo si se solicita confirmación.')}
-function loadDemo(){Object.entries(DEMO).forEach(([k,v])=>state.data[k]=JSON.parse(localStorage.getItem(`mf_${k}`)||JSON.stringify(v)))}
-async function loadAll(){for(const table of Object.keys(SCHEMAS)){const {data,error}=await sb.from(table).select('*').order('created_at',{ascending:false});state.data[table]=error?[]:data} }
+function normalizeData(){(state.data.tarjetas||[]).forEach(x=>x.tipo=x.tipo||'CREDITO');(state.data.movimientos||[]).forEach(x=>x.numero_cuotas=Number(x.numero_cuotas||1))}
+function loadDemo(){Object.entries(DEMO).forEach(([k,v])=>state.data[k]=JSON.parse(localStorage.getItem(`mf_${k}`)||JSON.stringify(v)));normalizeData()}
+async function loadAll(){for(const table of Object.keys(SCHEMAS)){const {data,error}=await sb.from(table).select('*').order('created_at',{ascending:false});state.data[table]=error?[]:data}normalizeData()}
 function route(){state.page=(location.hash||'#resumen').slice(1);if(![...Object.keys(META),'resumen'].includes(state.page))state.page='resumen';document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.page===state.page));const m=META[state.page]||{title:'Tu dinero, en contexto',eye:`RESUMEN DE ${new Intl.DateTimeFormat('es-PE',{month:'long'}).format(new Date()).toUpperCase()}`};$('#page-title').textContent=m.title;$('#page-eyebrow').textContent=m.eye;$('#add-main').classList.toggle('hidden',!SCHEMAS[state.page]);render()}
 function sum(type){return (state.data.movimientos||[]).filter(x=>x.tipo===type&&String(x.fecha).startsWith(monthISO())).reduce((a,x)=>a+Number(x.monto),0)}
 function accountBalance(c){const ms=(state.data.movimientos||[]).filter(x=>x.cuenta_id===c.id);return Number(c.saldo_inicial||0)+ms.reduce((a,x)=>a+(x.tipo==='INGRESO'?1:-1)*Number(x.monto),0)}
 function debtTotal(){return (state.data.deudas||[]).reduce((a,x)=>a+Math.max(0,Number(x.monto_total)-Number(x.monto_pagado)),0)}
 function cat(id){return (state.data.categorias||[]).find(x=>x.id===id)||{nombre:'Sin categoría',color:'#94a3b8'}}
+function account(id){return (state.data.cuentas||[]).find(x=>x.id===id)||null}
+function card(id){return (state.data.tarjetas||[]).find(x=>x.id===id)||null}
+function cardUsed(item){return Number(item?.saldo_inicial_usado||0)+(state.data.movimientos||[]).filter(x=>x.tipo==='GASTO'&&x.medio_pago==='TARJETA_CREDITO'&&x.tarjeta_id===item?.id).reduce((total,x)=>total+Number(x.monto||0),0)}
 function render(){if(state.page==='resumen')renderDashboard();else if(state.page==='flujo'||state.page==='reportes')renderReports();else renderEntity(state.page)}
 function renderDashboard(){const income=sum('INGRESO'),expense=sum('GASTO'),balance=income-expense,accounts=(state.data.cuentas||[]).reduce((a,x)=>a+accountBalance(x),0),rate=income?Math.round(balance/income*100):0;const mov=[...(state.data.movimientos||[])].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,6);const cats={};(state.data.movimientos||[]).filter(x=>x.tipo==='GASTO'&&String(x.fecha).startsWith(monthISO())).forEach(x=>cats[x.categoria_id]=(cats[x.categoria_id]||0)+Number(x.monto));
  $('#content').innerHTML=`<section class="summary-grid"><article class="hero-card"><div class="hero-head"><div><span class="overline">Posición actual</span><h2>Disponible en tus cuentas</h2></div><span class="date-chip">Actualizado hoy</span></div><div class="main-balance"><small>S/</small>${Number(accounts).toLocaleString('es-PE',{minimumFractionDigits:2})}</div><p class="caption">Saldo combinado de ${(state.data.cuentas||[]).length} cuentas activas.</p><div class="cashflow"><div><span>INGRESOS DEL MES</span><strong class="positive">+ ${money(income)}</strong></div><div><span>EGRESOS DEL MES</span><strong class="negative">− ${money(expense)}</strong></div><div><span>BALANCE MENSUAL</span><strong class="${balance>=0?'positive':'negative'}">${money(balance)}</strong></div></div></article><aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income?`Conservaste el ${rate}% de tus ingresos.`:'Empieza registrando el movimiento de hoy.'}</h2><p>${balance>=0?'Tu balance es positivo; mantén el registro al día.':'Tus egresos superaron lo ingresado durante este periodo.'}</p><div class="quick-actions"><button class="btn" data-new="movimientos" data-type="INGRESO">↓ Ingreso</button><button class="btn" data-new="movimientos" data-type="GASTO">↑ Egreso</button></div></aside></section><section class="stats"><article class="stat-card"><span>PATRIMONIO ESTIMADO</span><strong>${money(accounts-debtTotal())}</strong></article><article class="stat-card"><span>DEUDAS PENDIENTES</span><strong class="negative">${money(debtTotal())}</strong></article><article class="stat-card"><span>METAS ACTIVAS</span><strong>${(state.data.metas||[]).length}</strong></article></section><section class="two-column"><article class="panel"><div class="panel-head"><div><span class="overline">TU HISTORIA RECIENTE</span><h2>Movimientos</h2></div><a class="link-button" href="#movimientos">Abrir historial →</a></div>${mov.length?mov.map(x=>`<div class="transaction"><span class="transaction-icon ${x.tipo==='INGRESO'?'income':''}">${x.tipo==='INGRESO'?'↓':'↑'}</span><span class="transaction-info"><strong>${esc(x.descripcion||cat(x.categoria_id).nombre)}</strong><small>${esc(x.fecha)} · ${esc(cat(x.categoria_id).nombre)}</small></span><strong class="amount ${x.tipo==='INGRESO'?'positive':'negative'}">${x.tipo==='INGRESO'?'+':'−'} ${money(x.monto)}</strong></div>`).join(''):'<div class="empty">Aún no hay movimientos.</div>'}</article><article class="panel"><div class="panel-head"><div><span class="overline">EN QUÉ SE FUE</span><h2>Egresos por categoría</h2></div></div>${Object.entries(cats).length?Object.entries(cats).map(([id,v])=>`<div class="category-row"><div><span>${esc(cat(id).nombre)}</span><strong>${money(v)}</strong></div><div class="bar"><i style="width:${expense?v/expense*100:0}%;background:${cat(id).color}"></i></div></div>`).join(''):'<div class="empty">Sin egresos este mes.</div>'}</article></section>`}
 function defaultEntity(){return SCHEMAS[state.page]?state.page:'movimientos'}
-function renderEntity(entity){const rows=state.data[entity]||[];const cols={personas:['nombre','relacion','email'],cuentas:['nombre','tipo','saldo_inicial','moneda'],categorias:['nombre','tipo'],tarjetas:['nombre','entidad','linea_credito','saldo_inicial_usado'],movimientos:['fecha','categoria_id','medio_pago','tipo','monto'],presupuestos:['mes','categoria_id','limite'],metas:['nombre','monto_objetivo','monto_actual','fecha_objetivo'],deudas:['acreedor','monto_total','monto_pagado','estado'],recurrentes:['nombre','servicio','monto_estimado','proxima_fecha']}[entity];const labels={categoria_id:'Categoría',medio_pago:'Medio de pago',saldo_inicial:'Saldo inicial',linea_credito:'Línea',saldo_inicial_usado:'Utilizado',monto_objetivo:'Objetivo',monto_actual:'Ahorrado',monto_total:'Total',monto_pagado:'Pagado',proxima_fecha:'Próximo pago'};
+function renderEntity(entity){const rows=state.data[entity]||[];const cols={personas:['nombre','relacion','email'],cuentas:['nombre','tipo','saldo_inicial','moneda'],categorias:['nombre','tipo'],tarjetas:['nombre','tipo','entidad','origen_tarjeta'],movimientos:['fecha','categoria_id','medio_pago','origen_movimiento','tipo','monto'],presupuestos:['mes','categoria_id','limite'],metas:['nombre','monto_objetivo','monto_actual','fecha_objetivo'],deudas:['acreedor','monto_total','monto_pagado','estado'],recurrentes:['nombre','servicio','monto_estimado','proxima_fecha']}[entity];const labels={categoria_id:'Categoría',medio_pago:'Forma de pago',origen_tarjeta:'Cuenta o línea',origen_movimiento:'Cuenta o tarjeta',saldo_inicial:'Saldo inicial',linea_credito:'Línea',saldo_inicial_usado:'Utilizado',monto_objetivo:'Objetivo',monto_actual:'Ahorrado',monto_total:'Total',monto_pagado:'Pagado',proxima_fecha:'Próximo pago'};
  $('#content').innerHTML=`<div class="section-head"><div><h2>${rows.length} registro${rows.length===1?'':'s'}</h2><p class="caption">Administra la información de ${META[entity].title.toLowerCase()}.</p></div></div><section class="panel table-panel"><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${labels[c]||c.replaceAll('_',' ')}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${cols.map(c=>`<td>${formatCell(c,r[c],r)}</td>`).join('')}<td class="actions"><button data-edit="${entity}" data-id="${r.id}">Editar</button><button class="danger" data-delete="${entity}" data-id="${r.id}">Eliminar</button></td></tr>`).join(''):`<tr><td class="empty" colspan="${cols.length+1}">No hay registros todavía. Usa “Nuevo registro” para comenzar.</td></tr>`}</tbody></table></div></section>`}
-function formatCell(k,v,r){if(k==='categoria_id')return esc(cat(v).nombre);if(k==='medio_pago')return esc(String(v||'—').replaceAll('_',' '));if(['monto','limite','saldo_inicial','linea_credito','saldo_inicial_usado','monto_objetivo','monto_actual','monto_total','monto_pagado','monto_estimado'].includes(k))return `<strong>${money(v)}</strong>`;if(k==='tipo')return `<span class="badge ${String(v).toLowerCase()}">${esc(v)}</span>`;return esc(v||'—')}
+function formatCell(k,v,r){if(k==='categoria_id')return esc(cat(v).nombre);if(k==='medio_pago')return esc(String(v||'—').replaceAll('_',' '));if(k==='origen_tarjeta'){if(r.tipo==='DEBITO')return esc(account(r.cuenta_id)?.nombre||'Sin cuenta vinculada');const used=cardUsed(r);return `<strong>Línea ${money(r.linea_credito)}</strong><small class="table-note">Utilizado ${money(used)} · Disponible ${money(Math.max(0,Number(r.linea_credito||0)-used))}</small>`}if(k==='origen_movimiento'){const source=r.tarjeta_id?card(r.tarjeta_id):account(r.cuenta_id);return esc(source?.nombre||'—')}if(['monto','limite','saldo_inicial','linea_credito','saldo_inicial_usado','monto_objetivo','monto_actual','monto_total','monto_pagado','monto_estimado'].includes(k))return `<strong>${money(v)}</strong>`;if(k==='tipo')return `<span class="badge ${String(v).toLowerCase()}">${esc(optionLabel(String(v)))}</span>`;return esc(v||'—')}
 function renderReports(){const byMonth={};(state.data.movimientos||[]).forEach(x=>{const m=String(x.fecha).slice(0,7);byMonth[m]??={income:0,expense:0};byMonth[m][x.tipo==='INGRESO'?'income':'expense']+=Number(x.monto)});const rows=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0]));$('#content').innerHTML=`<section class="stats"><article class="stat-card"><span>INGRESOS ACUMULADOS</span><strong class="positive">${money((state.data.movimientos||[]).filter(x=>x.tipo==='INGRESO').reduce((a,x)=>a+Number(x.monto),0))}</strong></article><article class="stat-card"><span>EGRESOS ACUMULADOS</span><strong class="negative">${money((state.data.movimientos||[]).filter(x=>x.tipo==='GASTO').reduce((a,x)=>a+Number(x.monto),0))}</strong></article><article class="stat-card"><span>BALANCE DEL MES</span><strong>${money(sum('INGRESO')-sum('GASTO'))}</strong></article></section><section class="panel table-panel"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Egresos</th><th>Balance</th></tr></thead><tbody>${rows.length?rows.map(([m,x])=>`<tr><td><strong>${m}</strong></td><td class="positive">${money(x.income)}</td><td class="negative">${money(x.expense)}</td><td><strong>${money(x.income-x.expense)}</strong></td></tr>`).join(''):'<tr><td colspan="4" class="empty">Registra movimientos para generar el análisis.</td></tr>'}</tbody></table></section>`}
 function contentClick(e){const n=e.target.closest('[data-new]'),ed=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(n)openForm(n.dataset.new,null,{tipo:n.dataset.type});if(ed)openForm(ed.dataset.edit,(state.data[ed.dataset.edit]||[]).find(x=>x.id===ed.dataset.id));if(del)remove(del.dataset.delete,del.dataset.id)}
-function openForm(entity,row=null,preset={}){state.editing={entity,id:row?.id||null};$('#dialog-title').textContent=`${row?'Editar':'Nueva'} ${META[entity].singular}`;$('#form-fields').innerHTML=SCHEMAS[entity].map(([name,label,type,opt])=>fieldHTML(name,label,type,opt,row?.[name]??preset[name]??'')).join('');$('#record-dialog').showModal()}
-function fieldHTML(name,label,type,opt,value){let control;const optional=state.editing.entity==='movimientos'&&name==='descripcion';if(type==='month'&&String(value).length>7)value=String(value).slice(0,7);if(type==='select')control=`<select name="${name}" required><option value="">Selecciona</option>${opt.map(x=>`<option ${x==value?'selected':''}>${x}</option>`).join('')}</select>`;else if(type==='relation'){let list=state.data[opt]||[];if(name==='categoria_id'&&state.editing.entity==='presupuestos')list=list.filter(x=>x.tipo==='GASTO');control=`<select name="${name}"><option value="">Sin asignar</option>${list.map(x=>`<option value="${x.id}" ${x.id==value?'selected':''}>${esc(x.nombre)}</option>`).join('')}</select>`}else if(type==='textarea')control=`<textarea name="${name}">${esc(value)}</textarea>`;else control=`<input name="${name}" type="${type}" value="${esc(value||(type==='date'?todayISO():''))}" ${type==='number'?'step="0.01" min="0"':''} ${optional?'':'required'}>`;return `<label class="${type==='textarea'?'wide':''}">${label}${optional?' <span class="optional-label">Opcional</span>':''}${control}</label>`}
+function openForm(entity,row=null,preset={}){
+  state.editing={entity,id:row?.id||null};
+  const defaults=entity==='tarjetas'?{tipo:'CREDITO',saldo_inicial_usado:0}:entity==='movimientos'?{numero_cuotas:1}:{};
+  const action=row?'Editar':entity==='movimientos'?'Nuevo':'Nueva';
+  $('#dialog-title').textContent=`${action} ${META[entity].singular}`;
+  $('#form-fields').innerHTML=`<div id="flow-guidance" class="flow-guidance wide"></div>`+SCHEMAS[entity].map(([name,label,type,opt])=>fieldHTML(name,label,type,opt,row?.[name]??preset[name]??defaults[name]??'')).join('');
+  $('#record-form [name="medio_pago"]')?.addEventListener('change',updateFormFlow);
+  $('#record-form [name="tipo"]')?.addEventListener('change',updateFormFlow);
+  updateFormFlow();
+  $('#record-dialog').showModal();
+}
+function optionLabel(value){return ({CREDITO:'Crédito',DEBITO:'Débito',TARJETA_CREDITO:'Tarjeta de crédito',TARJETA_DEBITO:'Tarjeta de débito',CUENTA_BANCARIA:'Cuenta bancaria'}[value]||value.replaceAll('_',' '))}
+function fieldHTML(name,label,type,opt,value){
+  let control;
+  const optional=(state.editing.entity==='movimientos'&&['persona_id','descripcion','notas'].includes(name))||(state.editing.entity==='tarjetas'&&['saldo_inicial_usado'].includes(name));
+  if(type==='month'&&String(value).length>7)value=String(value).slice(0,7);
+  if(type==='select')control=`<select name="${name}" ${optional?'':'required'}><option value="">Selecciona</option>${opt.map(x=>`<option value="${x}" ${x==value?'selected':''}>${esc(optionLabel(x))}</option>`).join('')}</select>`;
+  else if(type==='relation'){
+    let list=state.data[opt]||[];
+    if(name==='categoria_id'&&state.editing.entity==='presupuestos')list=list.filter(x=>x.tipo==='GASTO');
+    control=`<select name="${name}"><option value="">Sin asignar</option>${list.map(x=>`<option value="${x.id}" ${x.id==value?'selected':''} ${name==='tarjeta_id'?`data-card-type="${x.tipo||'CREDITO'}"`:''}>${esc(x.nombre)}${name==='tarjeta_id'?` · ${esc(x.entidad)} (${esc(optionLabel(x.tipo||'CREDITO'))})`:''}</option>`).join('')}</select>`;
+  }else if(type==='textarea')control=`<textarea name="${name}">${esc(value)}</textarea>`;
+  else control=`<input name="${name}" type="${type}" value="${esc(value||(type==='date'?todayISO():''))}" ${type==='number'?'step="0.01" min="0"':''} ${optional?'':'required'}>`;
+  return `<label data-field="${name}" class="${type==='textarea'?'wide':''}">${label}${optional?' <span class="optional-label">Opcional</span>':''}${control}</label>`;
+}
+function updateFormFlow(){
+  const form=$('#record-form'),entity=state.editing?.entity;
+  const setField=(name,visible,required=false)=>{const label=form.querySelector(`[data-field="${name}"]`);if(!label)return;label.hidden=!visible;const control=label.querySelector('input,select,textarea');control.disabled=!visible;control.required=visible&&required};
+  const guidance=$('#flow-guidance');
+  if(entity==='movimientos'){
+    const payment=form.elements.medio_pago?.value,isCredit=payment==='TARJETA_CREDITO',isDebit=payment==='TARJETA_DEBITO',usesCard=isCredit||isDebit;
+    setField('cuenta_id',!usesCard,!usesCard);setField('tarjeta_id',usesCard,usesCard);setField('numero_cuotas',isCredit,isCredit);
+    const cardSelect=form.elements.tarjeta_id;
+    if(cardSelect)Array.from(cardSelect.options).forEach(option=>{const type=option.dataset.cardType,allowed=!type||(isCredit&&type==='CREDITO')||(isDebit&&type==='DEBITO');option.hidden=!allowed;option.disabled=!allowed;if(option.selected&&!allowed)cardSelect.value=''});
+    guidance.textContent=isCredit?'Compra a crédito: el monto aumentará la deuda de la tarjeta y no descontará ninguna cuenta hasta que registres su pago.':isDebit?'Compra con débito: el monto se descontará automáticamente de la cuenta vinculada a la tarjeta.':'Movimiento directo: selecciona la cuenta de donde sale el dinero o donde ingresa.';
+  }else if(entity==='tarjetas'){
+    const isDebit=form.elements.tipo?.value==='DEBITO';
+    setField('cuenta_id',isDebit,isDebit);['linea_credito','dia_cierre','dia_pago'].forEach(name=>setField(name,!isDebit,!isDebit));setField('saldo_inicial_usado',!isDebit,false);
+    guidance.textContent=isDebit?'Tarjeta de débito: vincúlala a la cuenta bancaria cuyo saldo se descontará en cada compra.':'Tarjeta de crédito: las compras aumentarán su deuda y el dinero saldrá de una cuenta recién cuando registres el pago.';
+  }else guidance.hidden=true;
+}
 async function saveForm(e){
   e.preventDefault();
   if(e.submitter?.value==='cancel'){$('#record-dialog').close();return}
@@ -70,7 +113,31 @@ async function saveForm(e){
   saveButton.disabled=true;saveButton.classList.add('is-loading');saveButton.setAttribute('aria-busy','true');saveButton.textContent='Guardando…';
   try{
     const {entity,id}=state.editing,obj=Object.fromEntries(new FormData($('#record-form')).entries());
-    for(const [n,,t] of SCHEMAS[entity])if(t==='number')obj[n]=Number(obj[n]||0);
+    for(const [n,,t] of SCHEMAS[entity])if(t==='number'&&Object.hasOwn(obj,n))obj[n]=Number(obj[n]||0);
+    for(const [n,,t] of SCHEMAS[entity])if(t==='relation'&&obj[n]==='')obj[n]=null;
+    if(entity==='tarjetas'){
+      if(obj.tipo==='DEBITO'){
+        if(!obj.cuenta_id){toast('Selecciona la cuenta bancaria vinculada a la tarjeta de débito.');return}
+        obj.linea_credito=null;obj.saldo_inicial_usado=0;obj.dia_cierre=null;obj.dia_pago=null;
+      }else{
+        obj.tipo='CREDITO';obj.cuenta_id=null;
+        if(!obj.linea_credito||!obj.dia_cierre||!obj.dia_pago){toast('Completa la línea de crédito, el cierre y el día de pago.');return}
+      }
+    }
+    if(entity==='movimientos'){
+      const usesCredit=obj.medio_pago==='TARJETA_CREDITO',usesDebit=obj.medio_pago==='TARJETA_DEBITO',usesCard=usesCredit||usesDebit;
+      if(usesCard&&obj.tipo!=='GASTO'){toast('Las tarjetas solo pueden utilizarse para registrar gastos.');return}
+      if(usesCard){
+        const selectedCard=card(obj.tarjeta_id),expected=usesCredit?'CREDITO':'DEBITO';
+        if(!selectedCard){toast('Selecciona la tarjeta utilizada.');return}
+        if((selectedCard.tipo||'CREDITO')!==expected){toast(`Selecciona una tarjeta de ${expected.toLowerCase()}.`);return}
+        if(usesDebit){if(!selectedCard.cuenta_id){toast('Esta tarjeta de débito no tiene una cuenta vinculada.');return}obj.cuenta_id=selectedCard.cuenta_id;obj.numero_cuotas=1}
+        else obj.cuenta_id=null;
+      }else{
+        if(!obj.cuenta_id){toast('Selecciona la cuenta de origen o destino.');return}
+        obj.tarjeta_id=null;obj.numero_cuotas=1;
+      }
+    }
     if(entity==='presupuestos'&&obj.mes)obj.mes+=obj.mes.length===7?'-01':'';
     if(state.demo){
       obj.id=id||crypto.randomUUID();const list=state.data[entity];const i=list.findIndex(x=>x.id===id);i>=0?list.splice(i,1,obj):list.unshift(obj);localStorage.setItem(`mf_${entity}`,JSON.stringify(list));
@@ -78,7 +145,7 @@ async function saveForm(e){
       obj.user_id=state.user.id;
       const query=id?sb.from(entity).update(obj).eq('id',id):sb.from(entity).insert(obj);
       const {data:saved,error}=await query.select().single();
-      if(error){toast(error.message);return}
+      if(error){toast(error.code==='PGRST204'?'La base de datos necesita aplicar la actualización de tarjetas.':error.message);return}
       const list=state.data[entity]||[],i=list.findIndex(x=>x.id===id);
       i>=0?list.splice(i,1,saved):list.unshift(saved);state.data[entity]=list;
     }
