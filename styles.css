@@ -52,3 +52,10 @@ td{font-size:12.5px;line-height:1.45}
 .filters input,.filters select{font-size:12px}
 .item-card h3{font-size:15px}
 .item-card dl{font-size:12px;line-height:1.4}
+
+/* Save feedback */
+.optional-label{margin-left:5px;color:var(--muted);font-size:10.5px;font-weight:500}
+#save-record:active{background:#1f43c8}
+#save-record.is-loading{background:#244be1;color:#fff;cursor:wait;opacity:.9}
+#save-record.is-loading::after{width:13px;height:13px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;content:"";animation:save-spin .7s linear infinite}
+@keyframes save-spin{to{transform:rotate(360deg)}}
