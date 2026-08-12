@@ -109,25 +109,34 @@ svg { display: block; }
     position: relative;
     display: flex;
     align-items: center;
-    gap: 11px;
-    min-height: 42px;
-    padding: 0 12px;
-    border-radius: 10px;
+    gap: 10px;
+    min-height: 46px;
+    padding: 0 9px;
+    border-radius: 12px;
     color: #aeb8c8;
     font-size: 12.5px;
     font-weight: 500;
     transition: background .18s ease, color .18s ease, transform .18s ease;
 }
 .nav a svg {
-    width: 18px;
-    height: 18px;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    padding: 6px;
+    border: 1px solid rgba(83, 96, 119, .14);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .34);
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.7;
+    stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
+    transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+    shape-rendering: geometricPrecision;
 }
+.nav a svg * { vector-effect: non-scaling-stroke; }
 .nav a:hover { background: rgba(255,255,255,.055); color: #fff; transform: translateX(2px); }
+.nav a:focus-visible { outline: 2px solid rgba(65, 105, 220, .42); outline-offset: 2px; }
 .nav a.active { background: var(--sidebar-soft); color: #fff; font-weight: 600; }
 .nav a.active::before {
     position: absolute;
@@ -138,7 +147,12 @@ svg { display: block; }
     background: #35b8aa;
     content: "";
 }
-.nav a.active svg { color: #4cc6ba; }
+.nav a.active svg {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 5px 12px rgba(65, 105, 220, .22);
+}
 .sidebar-profile {
     display: grid;
     grid-template-columns: 36px minmax(0,1fr) 31px;
@@ -661,9 +675,11 @@ html { font-size: 16px; }
 .nav-label { color: #929db0; font-size: 9.5px; }
 .nav a { color: #536077; font-size: 13.5px; }
 .nav a:hover { background: #dde5f2; color: #22304a; }
+.nav a:hover svg { border-color: rgba(65, 105, 220, .22); background: rgba(255, 255, 255, .72); color: var(--primary); }
 .nav a.active { background: #d3dff8; color: #294da9; }
 .nav a.active::before { background: var(--primary); }
-.nav a.active svg { color: var(--primary); }
+.nav a.active svg { border-color: var(--primary); background: var(--primary); color: #fff; }
+.nav a.active:hover svg { background: var(--primary-hover); color: #fff; }
 .sidebar-profile { border-top-color: #dbe1eb; }
 .avatar { background: #dfe6f2; color: #34415a; }
 .profile-copy strong { color: var(--ink); font-size: 12px; }
