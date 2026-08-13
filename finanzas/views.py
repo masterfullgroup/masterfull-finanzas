@@ -91,14 +91,20 @@ def dashboard(request):
         fecha__year=ultimo_mes.year,
         fecha__month=ultimo_mes.month,
     )
+    ingresos_anterior = movimientos_anterior.filter(tipo="INGRESO").aggregate(
+        total=Sum("monto")
+    )["total"] or Decimal("0")
     gastos_anterior = movimientos_anterior.filter(tipo="GASTO").aggregate(
         total=Sum("monto")
     )["total"] or Decimal("0")
     ahorro_mes = ingresos_mes - gastos_mes
     tasa_ahorro = round((ahorro_mes / ingresos_mes) * 100, 1) if ingresos_mes else 0
+    variacion_ingresos = round(
+        ((ingresos_mes - ingresos_anterior) / ingresos_anterior) * 100, 1
+    ) if ingresos_anterior else None
     variacion_gastos = round(
         ((gastos_mes - gastos_anterior) / gastos_anterior) * 100, 1
-    ) if gastos_anterior else 0
+    ) if gastos_anterior else None
 
     cuentas = Cuenta.objects.filter(
         usuario=request.user,
@@ -110,13 +116,41 @@ def dashboard(request):
         Decimal("0"),
     )
 
-    tarjetas = TarjetaCredito.objects.filter(
+    tarjetas = list(TarjetaCredito.objects.filter(
         usuario=request.user,
         activa=True,
-    )
+    ).order_by("entidad", "nombre"))
 
     deuda_tarjetas = sum(
         (tarjeta.saldo_utilizado for tarjeta in tarjetas),
+        Decimal("0"),
+    )
+
+    presupuestos_mes = list(
+        Presupuesto.objects.filter(
+            usuario=request.user,
+            mes=primer_dia,
+        ).select_related("categoria")
+    )
+    presupuestos_mes.sort(
+        key=lambda presupuesto: presupuesto.porcentaje_utilizado,
+        reverse=True,
+    )
+
+    deudas_pendientes = list(
+        Deuda.objects.filter(
+            usuario=request.user,
+            estado="PENDIENTE",
+        ).order_by("fecha_vencimiento", "acreedor")[:4]
+    )
+    deuda_total = sum(
+        (
+            deuda.saldo_pendiente
+            for deuda in Deuda.objects.filter(
+                usuario=request.user,
+                estado="PENDIENTE",
+            )
+        ),
         Decimal("0"),
     )
 
@@ -132,7 +166,7 @@ def dashboard(request):
     gastos_recurrentes = GastoRecurrente.objects.filter(
         usuario=request.user,
         activo=True,
-    ).order_by("proxima_fecha")[:5]
+    ).order_by("proxima_fecha")[:3]
 
     personas = Persona.objects.filter(usuario=request.user, activa=True)
     resumen_personas = []
@@ -149,32 +183,37 @@ def dashboard(request):
 
     contexto = {
         "saldo_total": saldo_total,
-        "patrimonio_neto": saldo_total - deuda_tarjetas,
+        "patrimonio_neto": saldo_total - deuda_tarjetas - deuda_total,
         "ingresos_mes": ingresos_mes,
         "gastos_mes": gastos_mes,
         "balance_mes": ingresos_mes - gastos_mes,
-        "tasa_ahorro": tasa_ahorro,
+        "ingresos_anterior": ingresos_anterior,
+        "gastos_anterior": gastos_anterior,
+        "variacion_ingresos": variacion_ingresos,
         "variacion_gastos": variacion_gastos,
+        "tasa_ahorro": tasa_ahorro,
         "deuda_tarjetas": deuda_tarjetas,
+        "deuda_total": deuda_total,
         "ultimos_movimientos": Movimiento.objects.filter(
             usuario=request.user
         ).select_related(
+            "persona",
             "cuenta",
             "categoria",
             "tarjeta_credito",
-        )[:8],
+        )[:6],
         "cuentas": cuentas,
         "tarjetas": tarjetas,
         "gastos_categoria": gastos_categoria,
+        "presupuestos_mes": presupuestos_mes[:4],
         "gastos_recurrentes": gastos_recurrentes,
         "resumen_personas": resumen_personas,
-        "metas": MetaAhorro.objects.filter(
-            usuario=request.user
-        )[:4],
-        "deudas_pendientes": Deuda.objects.filter(
+        "metas_activas": MetaAhorro.objects.filter(
             usuario=request.user,
-            estado="PENDIENTE",
-        )[:4],
+            completada=False,
+        )[:3],
+        "deudas_pendientes": deudas_pendientes,
+        "deuda_proxima": deudas_pendientes[0] if deudas_pendientes else None,
     }
 
     return render(
