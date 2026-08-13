@@ -949,6 +949,16 @@ td { padding: 16px 12px; }
     .dashboard-secondary { grid-template-columns: 1fr 1fr; }
     .commitments-summary { grid-column: 1 / -1; }
 }
+
+/* At 320px the page action keeps its accessible name but yields space to the
+   title and date control. The icon remains the visual cue; assistive tech can
+   still read the text because it is not display:none. */
+@media (max-width: 360px) {
+    .top-actions { gap: 6px; }
+    .top-actions .btn { width: 44px; min-width: 44px; padding: 0; font-size: 0; }
+    .top-actions .btn span { display: inline; font-size: 0; }
+    .top-actions .btn svg { flex: 0 0 16px; }
+}
 @media (max-width: 760px) {
     .dashboard-hero { gap: 12px; margin-bottom: 22px; }
     .position-hero, .month-reading { padding: 22px 18px; border-radius: 14px; }
@@ -1596,3 +1606,40 @@ tbody tr:hover { background: var(--color-surface-inset); }
 /* The chart already has a horizontal disclosure container; avoid a second, tiny
    vertical scrollbar caused by the chart's baseline and padding. */
 .daily-chart-wrap { overflow-y: hidden; }
+
+/* Etapas 5–6: forms and records keep the same calm fintech language while
+   making intent, validation and destructive actions unmistakable. */
+.form-note { margin: 0 0 18px; color: var(--color-ink-500); font-size: .75rem; line-height: 1.5; }
+.form-note span, .required-mark { color: var(--color-negative); font-weight: 800; }
+.form-error-summary { margin: 0 0 20px; padding: 14px 16px; border: 1px solid oklch(.55 .18 25 / .35); border-left: 4px solid var(--color-negative); border-radius: var(--radius-sm); background: var(--color-negative-soft); color: var(--color-ink-800); }
+.form-error-summary strong { display: block; color: var(--color-negative); font-size: .875rem; }
+.form-error-summary p { margin: 4px 0 8px; font-size: .8125rem; }
+.form-error-summary ul { margin: 0; padding-left: 18px; font-size: .75rem; }
+.form-error-summary a { color: var(--color-negative); text-decoration: underline; text-underline-offset: 2px; }
+.form-section-heading { grid-column: 1 / -1; margin: 18px 0 0; padding: 14px 0 3px; border-top: 1px solid var(--color-border-subtle); }
+.form-section-heading:first-child { margin-top: 0; border-top: 0; }
+.form-section-heading span { color: var(--color-ink-950); font-size: .8125rem; font-weight: 800; letter-spacing: -.01em; }
+.form-section-heading p { margin: 3px 0 0; color: var(--color-ink-500); font-size: .6875rem; }
+.form-group label { display: flex; align-items: baseline; gap: 3px; }
+.form-group .field-help { display: block; margin-top: 5px; color: var(--color-ink-500); font-size: .6875rem; line-height: 1.45; }
+.form-group.has-error input, .form-group.has-error select, .form-group.has-error textarea, .auth-field.has-error input { border-color: var(--color-negative); background: var(--color-negative-soft); }
+.form-group.has-error input:focus, .form-group.has-error select:focus, .form-group.has-error textarea:focus, .auth-field.has-error input:focus { box-shadow: 0 0 0 3px oklch(.55 .18 25 / .18); }
+.form-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border-subtle); }
+.delete-confirmation { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; max-width: 680px; }
+.delete-confirmation h2 { margin: 5px 0 8px; color: var(--color-ink-950); font-size: 1.2rem; }
+.delete-confirmation p { margin: 0; color: var(--color-ink-700); line-height: 1.55; }
+.delete-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: var(--color-negative-soft); color: var(--color-negative); font-size: 1.25rem; font-weight: 800; }
+.delete-confirmation form { grid-column: 1 / -1; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--color-border-subtle); }
+.delete-confirmation .btn-danger { margin-left: 8px; }
+.row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.row-actions a, .account-card-action, .payment-card-action, .budget-card-action { min-height: 36px; display: inline-flex; align-items: center; padding: 6px 9px; border-radius: 7px; }
+.row-actions a:hover, .account-card-action:hover, .payment-card-action:hover, .budget-card-action:hover { background: var(--color-accent-soft); }
+.row-actions .danger-link:hover { background: var(--color-negative-soft); }
+@media (max-width: 600px) {
+    .form-section-heading { margin-top: 14px; padding-top: 12px; }
+    .delete-confirmation { grid-template-columns: auto minmax(0, 1fr); padding: 18px 16px; }
+    .delete-confirmation .actions { flex-direction: column; }
+    .delete-confirmation .btn-danger { margin: 0; }
+    .row-actions { justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+    .row-actions a { min-height: 40px; padding-inline: 10px; }
+}

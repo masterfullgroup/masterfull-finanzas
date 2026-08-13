@@ -2,12 +2,17 @@
 {% block title %}Eliminar{% endblock %}
 {% block heading %}Eliminar movimiento{% endblock %}
 {% block content %}
-<div class="panel form-panel">
-    <p>¿Confirmas que deseas eliminar <strong>{{ objeto }}</strong>?</p>
+<div class="panel form-panel delete-confirmation" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <span class="delete-icon" aria-hidden="true">!</span>
+    <div>
+        <span class="overline">Acción irreversible</span>
+        <h2 id="delete-title">¿Eliminar este registro?</h2>
+        <p id="delete-description">Se eliminará <strong>{{ objeto }}</strong>. Esta acción no se puede deshacer.</p>
+    </div>
     <form method="post">
         {% csrf_token %}
         <div class="actions">
-            <a class="btn btn-secondary" href="{% url 'movimientos_lista' %}">Cancelar</a>
+            <a class="btn btn-secondary" href="{% url 'movimientos_lista' %}">Conservar registro</a>
             <button class="btn btn-danger" type="submit">Eliminar</button>
         </div>
     </form>
