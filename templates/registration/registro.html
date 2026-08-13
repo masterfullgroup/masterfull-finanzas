@@ -11,17 +11,27 @@
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260801-6">
 </head>
 <body class="login-page">
-<main class="login-card register-card">
+<a class="skip-link" href="#auth-content">Saltar al formulario</a>
+<main id="auth-content" class="login-card register-card" tabindex="-1">
     <div class="login-logo"><span>M</span><div><strong>Masterfull</strong><small>Finanzas personales</small></div></div>
     <div class="auth-heading"><span>Comienza hoy</span><h1>Crea tu cuenta</h1><p>Registra tus datos para tener un espacio financiero privado.</p></div>
     <form method="post">
         {% csrf_token %}
         <div class="register-grid">
-        {% for field in form %}<div class="auth-field {% if field.name == 'email' or field.name == 'username' or field.name == 'password1' or field.name == 'password2' %}wide{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="auth-help">{{ field.help_text|striptags }}</small>{% endif %}{% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}</div>{% endfor %}
+        {% for field in form %}<div class="auth-field {% if field.name == 'email' or field.name == 'username' or field.name == 'password1' or field.name == 'password2' %}wide{% endif %}{% if field.errors %} has-error{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small id="{{ field.id_for_label }}-help" class="auth-help">{{ field.help_text|striptags }}</small>{% endif %}{% for error in field.errors %}<div id="{{ field.id_for_label }}-error" class="field-error" role="alert">{{ error }}</div>{% endfor %}</div>{% endfor %}
         </div>
         <button class="btn btn-primary full" type="submit">Crear mi cuenta</button>
     </form>
     <p class="auth-switch">¿Ya tienes una cuenta? <a href="{% url 'login' %}">Iniciar sesión</a></p>
 </main>
+<script>
+document.querySelectorAll('.auth-field').forEach((fieldGroup) => {
+    const control = fieldGroup.querySelector('input, select, textarea');
+    const descriptions = Array.from(fieldGroup.querySelectorAll('small[id], .field-error[id]')).map((item) => item.id);
+    if (!control) return;
+    if (descriptions.length) control.setAttribute('aria-describedby', descriptions.join(' '));
+    if (fieldGroup.classList.contains('has-error')) control.setAttribute('aria-invalid', 'true');
+});
+</script>
 </body>
 </html>

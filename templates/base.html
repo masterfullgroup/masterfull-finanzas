@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260801-8">
 </head>
 <body>
+<a class="skip-link" href="#main-content">Saltar al contenido principal</a>
 <svg class="svg-library" aria-hidden="true">
     <defs>
         <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -37,12 +38,16 @@
     </defs>
 </svg>
 <div class="app-shell">
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Navegación de la cuenta">
         <a class="brand" href="{% url 'dashboard' %}">
             <span class="brand-mark"><svg viewBox="0 0 32 32"><path d="M8 23V9h11a5 5 0 0 1 0 10h-7M12 14h8"/></svg></span>
             <span class="brand-copy"><strong>Masterfull</strong><small>Finanzas personales</small></span>
         </a>
-        <nav class="nav">
+        <button class="mobile-menu-toggle" type="button" aria-controls="primary-navigation" aria-expanded="false">
+            <svg aria-hidden="true"><use href="#i-grid"/></svg>
+            <span>Menú</span>
+        </button>
+        <nav id="primary-navigation" class="nav" aria-label="Navegación principal">
             <small class="nav-label">PRINCIPAL</small>
             <a class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><svg><use href="#i-grid"/></svg><span>Resumen</span></a>
             <a class="{% if 'persona' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'personas_lista' %}"><svg><use href="#i-users"/></svg><span>Personas</span></a>
@@ -62,10 +67,10 @@
         <div class="sidebar-profile">
             <span class="avatar">{{ request.user.username|first|upper }}</span>
             <span class="profile-copy"><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>Cuenta personal</small></span>
-            <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" title="Cerrar sesión"><svg><use href="#i-logout"/></svg></button></form>
+            <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" aria-label="Cerrar sesión" title="Cerrar sesión"><svg aria-hidden="true"><use href="#i-logout"/></svg></button></form>
         </div>
     </aside>
-    <main class="main">
+    <main id="main-content" class="main" tabindex="-1">
         <div class="content-wrap">
             <header class="topbar">
                 <div class="page-title"><p>{% block eyebrow %}Panel financiero{% endblock %}</p><h1>{% block heading %}Resumen{% endblock %}</h1></div>
@@ -81,6 +86,8 @@
 </div>
 <script>
     const sideNavigation = document.querySelector('.nav');
+    const mobileMenuToggle = document.querySelector('.mobile-menu-toggle');
+    const sidebar = document.querySelector('.sidebar');
     const savedNavigationPosition = sessionStorage.getItem('masterfull-nav-scroll');
     if (sideNavigation && savedNavigationPosition !== null) {
         sideNavigation.scrollTop = Number(savedNavigationPosition);
@@ -88,6 +95,26 @@
     sideNavigation?.querySelectorAll('a').forEach(function (link) {
         link.addEventListener('click', function () {
             sessionStorage.setItem('masterfull-nav-scroll', sideNavigation.scrollTop);
+        });
+    });
+    mobileMenuToggle?.addEventListener('click', function () {
+        const isOpen = sidebar.classList.toggle('is-open');
+        mobileMenuToggle.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) sideNavigation?.querySelector('a')?.focus();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && sidebar?.classList.contains('is-open')) {
+            sidebar.classList.remove('is-open');
+            mobileMenuToggle?.setAttribute('aria-expanded', 'false');
+            mobileMenuToggle?.focus();
+        }
+    });
+    sideNavigation?.querySelectorAll('a').forEach(function (link) {
+        link.addEventListener('click', function () {
+            if (window.matchMedia('(max-width: 760px)').matches) {
+                sidebar?.classList.remove('is-open');
+                mobileMenuToggle?.setAttribute('aria-expanded', 'false');
+            }
         });
     });
 </script>

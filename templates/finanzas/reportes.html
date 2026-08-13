@@ -2,6 +2,7 @@
 {% block title %}Reportes{% endblock %}
 {% block eyebrow %}Análisis financiero{% endblock %}
 {% block heading %}Reportes y tendencias{% endblock %}
+{% block top_action %}{% endblock %}
 {% block content %}
 <div class="page-intro"><p>Comprende la evolución de tus ingresos, egresos y balance acumulado.</p></div>
 <section class="cards-grid three-cards">
@@ -10,7 +11,7 @@
     <article class="stat-card"><div class="stat-icon savings"><svg><use href="#i-chart"/></svg></div><div><span>Balance acumulado</span><strong class="{% if balance_total >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ balance_total|floatformat:2 }}</strong><small>Resultado neto</small></div></article>
 </section>
 <section class="dashboard-grid">
-    <article class="panel span-2"><div class="panel-header"><div><p class="section-kicker">Evolución</p><h2>Resumen mensual</h2></div></div><div class="table-wrap"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Egresos</th><th>Balance</th></tr></thead><tbody>{% for fila in filas %}<tr><td><strong>{{ fila.mes }}</strong></td><td class="text-positive">+ S/ {{ fila.ingresos|floatformat:2 }}</td><td class="text-negative">− S/ {{ fila.gastos|floatformat:2 }}</td><td class="amount {% if fila.balance >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ fila.balance|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="4"><div class="mini-empty">Registra movimientos para generar el análisis mensual.</div></td></tr>{% endfor %}</tbody></table></div></article>
+    <article class="panel span-2"><div class="panel-header"><div><p class="section-kicker">Evolución</p><h2>Resumen mensual</h2></div></div><div class="table-wrap"><table><thead><tr><th scope="col">Periodo</th><th scope="col">Ingresos</th><th scope="col">Egresos</th><th scope="col">Balance</th></tr></thead><tbody>{% for fila in filas %}<tr><td><strong>{{ fila.mes }}</strong></td><td class="text-positive">+ S/ {{ fila.ingresos|floatformat:2 }}</td><td class="text-negative">− S/ {{ fila.gastos|floatformat:2 }}</td><td class="amount {% if fila.balance >= 0 %}text-positive{% else %}text-negative{% endif %}">S/ {{ fila.balance|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="4"><div class="mini-empty">Registra movimientos para generar el análisis mensual.</div></td></tr>{% endfor %}</tbody></table></div></article>
     <article class="panel"><div class="panel-header"><div><p class="section-kicker">Distribución</p><h2>Egresos por categoría</h2></div></div><div class="category-bars">{% for item in gastos_por_categoria %}<div class="category-row"><div><span>{{ item.categoria__nombre }}</span><strong>S/ {{ item.total|floatformat:2 }}</strong></div><div class="progress-track"><span style="width:{{ item.porcentaje }}%"></span></div></div>{% empty %}<div class="compact-empty"><span class="empty-icon small"><svg><use href="#i-chart"/></svg></span><p>Sin egresos para analizar.</p></div>{% endfor %}</div></article>
 </section>
 {% endblock %}
