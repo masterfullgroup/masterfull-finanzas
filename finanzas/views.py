@@ -3,7 +3,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import login, update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
@@ -19,6 +20,7 @@ from .forms import (
     PagoTarjetaForm,
     PersonaForm,
     PresupuestoForm,
+    PerfilForm,
     RegistroForm,
     TarjetaCreditoForm,
     TransferenciaForm,
@@ -60,6 +62,32 @@ def registro(request):
         form = RegistroForm()
 
     return render(request, "registration/registro.html", {"form": form})
+
+
+@login_required
+def perfil(request):
+    perfil_form = PerfilForm(instance=request.user)
+    password_form = PasswordChangeForm(request.user)
+
+    if request.method == "POST":
+        if request.POST.get("accion") == "password":
+            password_form = PasswordChangeForm(request.user, request.POST)
+            if password_form.is_valid():
+                usuario = password_form.save()
+                update_session_auth_hash(request, usuario)
+                messages.success(request, "Tu contraseña se actualizó correctamente.")
+                return redirect("perfil")
+        else:
+            perfil_form = PerfilForm(request.POST, instance=request.user)
+            if perfil_form.is_valid():
+                perfil_form.save()
+                messages.success(request, "Los datos de tu perfil se actualizaron correctamente.")
+                return redirect("perfil")
+
+    return render(request, "finanzas/perfil.html", {
+        "perfil_form": perfil_form,
+        "password_form": password_form,
+    })
 
 
 @login_required

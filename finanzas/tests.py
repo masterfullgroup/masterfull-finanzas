@@ -85,6 +85,37 @@ class FinanzasPorPersonaTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "payment-guidance")
 
+    def test_perfil_actualiza_datos_de_usuario(self):
+        response = self.client.post(
+            reverse("perfil"),
+            {
+                "accion": "perfil",
+                "first_name": "Ana María",
+                "last_name": "Torres",
+                "email": "ana@example.com",
+                "username": "ana-nueva",
+            },
+        )
+        self.assertRedirects(response, reverse("perfil"))
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.username, "ana-nueva")
+        self.assertEqual(self.usuario.first_name, "Ana María")
+
+    def test_perfil_cambia_contrasena_y_conserva_sesion(self):
+        response = self.client.post(
+            reverse("perfil"),
+            {
+                "accion": "password",
+                "old_password": "clave-segura-123",
+                "new_password1": "Nueva-clave-segura-2026",
+                "new_password2": "Nueva-clave-segura-2026",
+            },
+        )
+        self.assertRedirects(response, reverse("perfil"))
+        self.assertTrue(self.client.get(reverse("perfil")).context)
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.check_password("Nueva-clave-segura-2026"))
+
     def test_flujo_mensual_calcula_totales(self):
         response = self.client.get(
             reverse("flujo_mensual"),

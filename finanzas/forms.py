@@ -54,6 +54,36 @@ class RegistroForm(UserCreationForm):
         return email
 
 
+class PerfilForm(forms.ModelForm):
+    class Meta:
+        model = get_user_model()
+        fields = ("first_name", "last_name", "email", "username")
+        labels = {
+            "first_name": "Nombres",
+            "last_name": "Apellidos",
+            "email": "Correo electrónico",
+            "username": "Nombre de usuario",
+        }
+        widgets = {
+            "first_name": forms.TextInput(attrs={"autocomplete": "given-name"}),
+            "last_name": forms.TextInput(attrs={"autocomplete": "family-name"}),
+            "email": forms.EmailInput(attrs={"autocomplete": "email"}),
+            "username": forms.TextInput(attrs={"autocomplete": "username"}),
+        }
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if get_user_model().objects.filter(username__iexact=username).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Ese nombre de usuario ya está en uso.")
+        return username
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if get_user_model().objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Ese correo ya está asociado a otra cuenta.")
+        return email
+
+
 class DateInput(forms.DateInput):
     input_type = "date"
 
