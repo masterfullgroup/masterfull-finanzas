@@ -38,6 +38,7 @@
   --mf-motion-fast: 150ms;
   --mf-font-body: Inter, Arial, sans-serif;
   --mf-font-heading: "Plus Jakarta Sans", Inter, Arial, sans-serif;
+  --mf-brand-content-offset-y: 6px;
 }
 
 /* 2. Semánticos: intención de cada valor. */
@@ -136,6 +137,7 @@ select option:checked, select option:hover { background: var(--ds-brand); color:
 .sidebar nav a.active { background: var(--ds-brand); }
 .sidebar nav a[href="#metas"] .nav-icon { border-color: #f2dfad; background: var(--ds-planning-soft); color: var(--ds-planning); }
 .sidebar nav a[href="#metas"].active .nav-icon { border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.13); color: var(--ds-surface); }
+.sidebar-brand > .brand-mark, .sidebar-brand > span:last-child { transform: translateY(var(--mf-brand-content-offset-y)); }
 
 dialog { border-radius: var(--mf-radius-dialog); background: var(--ds-dialog-bg); box-shadow: var(--mf-shadow-raised); }
 dialog::backdrop { background: var(--ds-dialog-overlay); }
