@@ -83,6 +83,8 @@
   --ds-table-head-fg: #35524b;
   --ds-dialog-bg: var(--ds-surface);
   --ds-dialog-overlay: rgba(23, 45, 43, .58);
+  --ds-surface-hover: #f1f8f6;
+  --ds-separator: #e4ece8;
 }
 
 body { background: var(--ds-canvas); color: var(--ds-text-primary); font-family: var(--mf-font-body); }
@@ -141,4 +143,51 @@ select option:checked, select option:hover { background: var(--ds-brand); color:
 
 dialog { border-radius: var(--mf-radius-dialog); background: var(--ds-dialog-bg); box-shadow: var(--mf-shadow-raised); }
 dialog::backdrop { background: var(--ds-dialog-overlay); }
+
+/* Pulido de jerarquía, ritmo y lectura de cifras. */
+:root {
+  --ds-page-gutter: clamp(18px, 2.8vw, 38px);
+  --ds-section-gap: 24px;
+  --ds-panel-padding: 24px;
+  --ds-control-height: 46px;
+  --ds-title-size: clamp(1.45rem, 1.8vw, 1.8rem);
+}
+.main { padding-inline: var(--ds-page-gutter); }
+.topbar { min-height: 108px; gap: var(--mf-space-6); }
+.topbar h1 { font-size: var(--ds-title-size); letter-spacing: -.035em; }
+.eyebrow { margin-bottom: var(--mf-space-2); font-size: 10px; letter-spacing: .14em; }
+.top-actions { gap: var(--mf-space-3); }
+.top-actions .btn, .date-chip { min-height: var(--ds-control-height); }
+.section-head { margin: var(--ds-section-gap) 0 var(--mf-space-4); }
+.panel:not(.table-panel):not(.filters), .hero-card { padding: var(--ds-panel-padding); }
+.hero-card { border-radius: 18px; }
+.panel h2, .hero-card h2, .section-head h2 { line-height: 1.3; letter-spacing: -.018em; }
+.caption { line-height: 1.55; }
+.filters.panel { gap: var(--mf-space-2); padding: var(--mf-space-4); border-radius: var(--ds-card-radius); }
+.filters input, .filters select, .account-filters input, .account-filters select { min-height: var(--ds-control-height); }
+.form-grid { gap: 18px; }
+.form-grid label, .auth-card label { line-height: 1.45; }
+.table-panel th { padding: 14px 16px; }
+.table-panel tbody tr:not(:last-child) td { border-bottom-color: var(--ds-separator); }
+.table-panel tbody tr:hover td { background: var(--ds-surface-hover); }
+.table-panel .empty { padding-block: 36px !important; }
+.main-balance, .stat-card strong, .amount, .account-balance strong, .cashflow strong, .category-row strong, .table-panel td strong {
+  font-variant-numeric: tabular-nums;
+}
+.stat-card { padding: 22px; }
+.stat-card span { letter-spacing: .025em; }
+.category-row { margin-block: 18px; }
+.progress, .bar { background: var(--ds-brand-soft); }
+.load-more { margin-block: 20px 28px; }
+.empty { line-height: 1.6; }
+@media (max-width: 760px) {
+  .main { padding-inline: 16px; }
+  .topbar { min-height: 82px; gap: 12px; }
+  .topbar h1 { font-size: 1.4rem; }
+  .top-actions .btn { min-height: 44px; padding-inline: 13px; }
+  .panel:not(.table-panel):not(.filters), .hero-card { padding: 18px; }
+  .filters.panel { padding: 12px; }
+  .stat-card { padding: 18px; }
+  .table-panel .empty { padding-block: 24px !important; }
+}
 @media (prefers-reduced-motion: reduce) { .btn, .people-card, .item-card, .auth-card input, .form-grid input, .form-grid select, .form-grid textarea { transition: none; } }
