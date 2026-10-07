@@ -382,6 +382,19 @@ function cellValue(entity, key, row) {
   return esc(value || "—");
 }
 
+function renderPeople(rows) {
+  if (!rows.length) return `<section class="people-empty"><div class="people-empty-mark" aria-hidden="true">＋</div><h2>Aún no hay personas</h2><p>Agrega a las personas de tu hogar para tener sus datos de contacto a mano.</p><button type="button" class="btn primary" data-new="personas">Agregar primera persona</button></section>`;
+  const cards = rows.map((row) => {
+    const name = row.nombre || "Persona sin nombre";
+    const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("es");
+    const color = /^#[\da-f]{3}(?:[\da-f]{3})?(?:[\da-f]{2})?$/i.test(row.color || "") ? row.color : "#315efb";
+    const contact = [row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : "", row.telefono ? `<a href="tel:${esc(String(row.telefono).replace(/[^+\d]/g, ""))}">${esc(row.telefono)}</a>` : ""].filter(Boolean);
+    const birthdate = row.fecha_nacimiento ? `<span class="people-birthday"><span aria-hidden="true">🎂</span> ${esc(row.fecha_nacimiento)}</span>` : "";
+    return `<article class="people-card"><div class="people-card-main"><span class="people-avatar" style="--person-color:${esc(color)}" aria-hidden="true">${esc(initials || "P")}</span><div class="people-identity"><h3>${esc(name)}</h3><span class="people-relation">${esc(optionLabel(row.relacion || "PERSONA"))}</span></div><div class="people-actions"><button type="button" data-edit="personas" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="personas" data-id="${esc(row.id)}">Eliminar</button></div></div><div class="people-contact">${contact.length ? contact.map((item) => `<span class="people-contact-item">${item}</span>`).join("") : `<span class="people-no-contact">Sin datos de contacto</span>`}${birthdate}</div></article>`;
+  }).join("");
+  return `<section class="people-section"><div class="people-section-head"><div><span class="overline">TU HOGAR</span><h2>Personas</h2><p class="caption">${rows.length} ${rows.length === 1 ? "persona" : "personas"} en esta página</p></div><button type="button" class="btn primary" data-new="personas"><span aria-hidden="true">＋</span> Nueva persona</button></div><div class="people-grid">${cards}</div></section>`;
+}
+
 function renderEntity(entity) {
   const meta = META[entity];
   const rows = state.data[entity] || [];
@@ -390,6 +403,10 @@ function renderEntity(entity) {
   const filters = filterable ? `<form class="filters panel" data-filter-form><input name="startDate" type="date" aria-label="Desde" value="${esc(state.filter.startDate || "")}"><input name="endDate" type="date" aria-label="Hasta" value="${esc(state.filter.endDate || "")}">${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
   const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
   const visibleRows = entity === "instituciones" ? institutionRows : rows;
+  if (entity === "personas") {
+    $("#content").innerHTML = renderPeople(visibleRows) + (state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : "");
+    return;
+  }
   const columns = fields.map((key) => `<th>${esc(fieldLabel(key))}</th>`).join("");
   const body = visibleRows.length ? visibleRows.map((row) => `<tr>${fields.map((key) => `<td>${cellValue(entity, key, row)}</td>`).join("")}<td class="actions">${row.base ? `<span class="caption">Catálogo</span>` : `<button type="button" data-edit="${entity}" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="${entity}" data-id="${esc(row.id)}">Eliminar</button>`}</td></tr>`).join("") : `<tr><td colspan="${fields.length + 1}" class="empty">Todavía no hay ${esc(meta.title.toLowerCase())}.</td></tr>`;
   $("#content").innerHTML = `${filters}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(meta.title)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
