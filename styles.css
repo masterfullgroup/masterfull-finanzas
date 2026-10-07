@@ -92,3 +92,10 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .account-actions{gap:4px}.account-actions button{min-height:36px;padding:7px 9px;font-size:12px}
 @media(max-width:900px){.account-card{grid-template-columns:minmax(0,1fr) auto}.account-actions{grid-column:1/-1}.account-balance{text-align:right}}
 @media(max-width:560px){body{font-size:14.5px}.topbar h1{font-size:22px}.account-card{grid-template-columns:1fr;padding:15px}.account-balance{text-align:left}.account-actions{grid-column:auto}.account-actions button{flex:1;min-width:92px}.form-grid{padding:18px}.flow-guidance{font-size:12.5px}}
+
+.setup-warning{padding:13px 15px;border:1px solid #f5cc78;border-radius:10px;background:#fff9e9;color:#79500a;font-size:13px;line-height:1.55}
+.dashboard-columns{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px;margin-top:18px}
+.table-scroll{max-width:100%;overflow-x:auto}
+.load-more{display:flex;justify-content:center;margin:16px 0 24px}
+.profile-panel .form-grid{box-shadow:none}
+@media(max-width:720px){.dashboard-columns{grid-template-columns:1fr}}

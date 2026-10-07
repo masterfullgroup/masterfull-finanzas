@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function allowedCollection(name) {
+      return name in [
+        'cuentas', 'tarjetas', 'personas', 'propietarios', 'instituciones',
+        'categorias', 'movimientos', 'presupuestos', 'metas', 'deudas',
+        'recurrentes', 'transferencias', 'pagosTarjeta'
+      ];
+    }
+
+    function safeProfile() {
+      return request.resource.data.keys().hasOnly([
+        'displayName', 'email', 'currency', 'timeZone', 'createdAt', 'updatedAt'
+      ])
+      && request.resource.data.displayName is string
+      && request.resource.data.email is string
+      && request.resource.data.currency in ['PEN', 'USD', 'EUR', 'GBP', 'JPY', 'CLP', 'COP', 'MXN', 'BRL']
+      && request.resource.data.timeZone == 'America/Lima';
+    }
+
+    function safeMoneyFields() {
+      return (!('montoMinor' in request.resource.data) || (request.resource.data.montoMinor is int && request.resource.data.montoMinor >= 0))
+        && (!('saldoInicialMinor' in request.resource.data) || (request.resource.data.saldoInicialMinor is int && request.resource.data.saldoInicialMinor >= 0))
+        && (!('saldoActualMinor' in request.resource.data) || request.resource.data.saldoActualMinor is int)
+        && (!('lineaCreditoMinor' in request.resource.data) || (request.resource.data.lineaCreditoMinor is int && request.resource.data.lineaCreditoMinor >= 0))
+        && (!('saldoInicialUsadoMinor' in request.resource.data) || (request.resource.data.saldoInicialUsadoMinor is int && request.resource.data.saldoInicialUsadoMinor >= 0))
+        && (!('utilizadoMinor' in request.resource.data) || (request.resource.data.utilizadoMinor is int && request.resource.data.utilizadoMinor >= 0))
+        && (!('limiteMinor' in request.resource.data) || (request.resource.data.limiteMinor is int && request.resource.data.limiteMinor >= 0))
+        && (!('montoObjetivoMinor' in request.resource.data) || (request.resource.data.montoObjetivoMinor is int && request.resource.data.montoObjetivoMinor >= 0))
+        && (!('montoActualMinor' in request.resource.data) || (request.resource.data.montoActualMinor is int && request.resource.data.montoActualMinor >= 0))
+        && (!('montoTotalMinor' in request.resource.data) || (request.resource.data.montoTotalMinor is int && request.resource.data.montoTotalMinor >= 0))
+        && (!('montoPagadoMinor' in request.resource.data) || (request.resource.data.montoPagadoMinor is int && request.resource.data.montoPagadoMinor >= 0))
+        && (!('montoEstimadoMinor' in request.resource.data) || (request.resource.data.montoEstimadoMinor is int && request.resource.data.montoEstimadoMinor >= 0));
+    }
+
+    match /users/{uid} {
+      allow read: if signedInAs(uid);
+      allow create: if signedInAs(uid) && safeProfile();
+      allow update: if signedInAs(uid) && safeProfile()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+
+      match /{collection}/{documentId} {
+        allow read: if signedInAs(uid) && allowedCollection(collection);
+        allow create: if signedInAs(uid) && allowedCollection(collection) && safeMoneyFields();
+        allow update: if signedInAs(uid) && allowedCollection(collection) && safeMoneyFields()
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if signedInAs(uid) && allowedCollection(collection);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

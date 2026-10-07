@@ -1,98 +1,70 @@
 # Masterfull Finanzas
 
-Aplicación Django para organizar cuentas, tarjetas, personas, movimientos, presupuestos, metas, deudas y reportes financieros.
+Aplicación web estática para administrar finanzas personales. La interfaz usa HTML, CSS y JavaScript modular; Firebase proporciona autenticación y persistencia. GitHub Pages sirve el frontend bajo `https://masterfullgroup.github.io/masterfull-finanzas/`.
 
-## Desarrollo local
+## Arquitectura
 
-Requiere Python 3.11 o posterior.
+- Firebase Authentication con correo y contraseña, recuperación y cambio de contraseña.
+- Cloud Firestore con datos bajo `users/{uid}` y subcolecciones privadas por usuario.
+- Los comprobantes están temporalmente desactivados. Si `storageBucket` no se configura, la aplicación no carga el SDK de Storage y permite guardar movimientos sin adjuntos. Al habilitar Storage podrá guardar imágenes/PDF (máximo 10 MB) en `users/{uid}/comprobantes/{movementId}/...`.
+- `firestore.rules` restringe Firestore al UID autenticado; `firestore.indexes.json` contiene los índices compuestos de las consultas. `storage.rules` queda listo para el futuro y no se despliega mientras Storage esté desactivado.
+- `firebase-config.js` contiene exclusivamente la configuración pública del SDK web. Nunca incluir service account keys ni credenciales administrativas.
+- Los importes se persisten como enteros en unidades menores (`montoMinor`, `saldoActualMinor`, etc.). Fechas de operación son cadenas `YYYY-MM-DD` interpretadas como fechas civiles en `America/Lima`; no convertirlas a UTC para agrupar meses.
 
-```bash
-python -m venv venv
+## Preparación de Firebase
+
+1. En Firebase Console crea o selecciona un proyecto y registra una aplicación web.
+2. En **Authentication → Sign-in method**, habilita **Email/Password**.
+3. Crea la base de datos de **Cloud Firestore** en producción.
+4. En **Authentication → Settings → Authorized domains**, añade `masterfullgroup.github.io` y `localhost` (para desarrollo local).
+5. Copia `apiKey`, `authDomain`, `messagingSenderId` y `appId` desde **Project settings → General → Your apps → SDK setup and configuration** dentro de `firebase-config.js`. El `projectId` confirmado ya está configurado como `masterfull-finanzas`. No se requiere `storageBucket` mientras Storage siga desactivado. Estos son valores públicos de cliente; no pegues claves privadas ni credenciales de service account.
+6. Despliega las reglas e índices de Firestore desde la raíz del repositorio:
+
+   ```sh
+   npx firebase-tools login
+   npx firebase-tools deploy --project masterfull-finanzas --only firestore:rules,firestore:indexes
+   ```
+
+   Inicia sesión con una cuenta que tenga permisos de despliegue sobre el proyecto. Confirma en Console que Firestore muestra las reglas y que los índices compuestos terminaron de crearse.
+
+### Activar comprobantes más adelante
+
+La versión actual es compatible con Storage apagado. Para habilitar comprobantes hay que actualizar el proyecto al plan Blaze, crear el bucket y revisar facturación/tarifas; Firebase actualmente exige Blaze para crear y mantener el acceso al bucket. [Requisitos actuales de Storage](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024). Después, añade su valor `storageBucket` a `firebase-config.js` y despliega también las reglas:
+
+```sh
+npx firebase-tools deploy --project masterfull-finanzas --only storage
+gcloud storage buckets update gs://EL_NOMBRE_REAL_DEL_BUCKET --cors-file=storage.cors.json
 ```
 
-En Windows:
+La vista del comprobante usa `getBlob`, que requiere configurar CORS para el origen del sitio. [Documentación oficial de descarga y CORS](https://firebase.google.com/docs/storage/web/download-files). El archivo solo permite `GET` desde GitHub Pages y Live Server en puerto 5500. Si usas otro puerto local, añádelo antes de aplicar CORS. Las reglas de Storage siguen exigiendo autenticación y UID.
 
-```powershell
-venv\Scripts\activate
-python -m pip install -r requirements.txt
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
+## Datos y rendimiento
+
+Los documentos pertenecen al usuario autenticado:
+
+`users/{uid}` (perfil) y subcolecciones `cuentas`, `tarjetas`, `personas`, `propietarios`, `instituciones`, `categorias`, `movimientos`, `presupuestos`, `metas`, `deudas`, `recurrentes`, `transferencias` y `pagosTarjeta`.
+
+El resumen pagina sus listas, limita los datos de pantalla y usa agregaciones del servidor para totales mensuales filtrados por tipo, moneda y fecha. Las listas cargan páginas de 50 documentos; las referencias del formulario cargan como máximo 100 por entidad. No hay listeners en tiempo real. Si crecen más allá de ese límite las referencias deberán contar con búsqueda/paginación dedicada. Firestore puede solicitar índices adicionales si se agregan filtros compuestos; el mensaje de error incluye un enlace para crearlos y el índice debe documentarse aquí antes de desplegarlo.
+
+## Ejecución local
+
+No requiere Django, Python ni instalar dependencias en el repositorio. Completa primero `firebase-config.js` y publica la carpeta con un servidor estático (por ejemplo, la extensión Live Server de VS Code o `npx http-server .`). Abre la URL local, habilitada como dominio autorizado en Firebase. Abrir `index.html` directamente como `file://` no funciona porque los módulos ES requieren un servidor HTTP.
+
+Para revisar los cambios de JavaScript sin conectar a Firebase:
+
+```sh
+node --input-type=module --check < app.js
+node --input-type=module --check < js/firebase.js
+node --input-type=module --check < js/data.js
+node --input-type=module --check < js/finance.js
 ```
 
-En macOS o Linux:
+## Publicación en GitHub Pages
 
-```bash
-source venv/bin/activate
-python -m pip install -r requirements.txt
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
-```
+En GitHub abre **Settings → Pages**, configura **Deploy from a branch**, elige `main` y la carpeta `/ (root)`. La aplicación es estática y mantiene las rutas relativas para funcionar en el subdirectorio del proyecto. Después de publicar, comprueba la URL, alta e inicio de sesión, recuperación de contraseña, operaciones, paginación e informes. Los comprobantes se prueban solo cuando Cloud Storage esté habilitado.
 
-Cuando `DATABASE_URL` no está definida, el proyecto usa `db.sqlite3` para desarrollo local. Este archivo está excluido de Git.
+## Seguridad y límites
 
-## Variables de entorno
+Las reglas impiden a una persona autenticada leer o escribir datos de otro UID. Cuando se active Storage, sus reglas limitarán tipo y tamaño de comprobantes. La configuración web de Firebase y las reglas son públicas por diseño; la autorización real está en Firebase. Habilita protección contra abuso y monitorea cuotas. Como no hay backend confiable, un usuario puede modificar sus propios documentos directamente y las reglas no pueden demostrar que sus saldos derivados coincidan con su historial. Los cambios de movimientos/transferencias/pagos actualizan los saldos de forma atómica en transacciones del cliente, pero para auditoría financiera fuerte o integridad contra manipulación por el propio dueño se requerirían funciones de servidor.
 
-| Variable | Producción | Ejemplo o finalidad |
-| --- | --- | --- |
-| `DATABASE_URL` | Obligatoria | Cadena PostgreSQL proporcionada por Supabase. |
-| `SECRET_KEY` | Obligatoria | Clave aleatoria y privada de Django. |
-| `DEBUG` | Obligatoria | Usar `False` en producción. |
-| `ALLOWED_HOSTS` | Obligatoria | Hosts separados por comas, sin `https://`. |
-| `CSRF_TRUSTED_ORIGINS` | Obligatoria | Orígenes completos separados por comas, incluyendo `https://`. |
-
-Ejemplo local opcional, sin credenciales reales:
-
-```env
-DEBUG=True
-SECRET_KEY=clave-solo-para-desarrollo
-ALLOWED_HOSTS=127.0.0.1,localhost
-CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
-```
-
-No agregues `.env`, conexiones de Supabase, certificados, contraseñas ni tokens al repositorio.
-
-## Base de datos PostgreSQL en Supabase
-
-1. Crea un proyecto en Supabase.
-2. Abre **Connect** en el panel del proyecto.
-3. Para un servicio persistente como Render, copia preferentemente la conexión de **Session pooler** si necesitas compatibilidad IPv4. La conexión directa requiere conectividad IPv6 o el complemento IPv4 de Supabase.
-4. Conserva los parámetros SSL de la URL. La configuración de Django también exige SSL cuando existe `DATABASE_URL`.
-5. Guarda la cadena completa únicamente en la variable privada `DATABASE_URL` de Render.
-
-No escribas la URL real en `render.yaml`, el código, el README ni archivos versionados.
-
-## Despliegue en Render
-
-El archivo `render.yaml` define un Web Service sobre la rama `main` con:
-
-- compilación: `bash build.sh`;
-- inicio: `gunicorn config.wsgi:application`;
-- archivos estáticos servidos por WhiteNoise;
-- migraciones ejecutadas durante la compilación.
-
-Para desplegar:
-
-1. Publica el repositorio en GitHub cuando la revisión esté aprobada.
-2. En Render, selecciona **New → Blueprint** y conecta este repositorio.
-3. Render leerá `render.yaml` desde la raíz.
-4. Introduce estos valores cuando Render los solicite:
-   - `DATABASE_URL`: conexión PostgreSQL privada de Supabase;
-   - `ALLOWED_HOSTS`: dominio asignado por Render, por ejemplo `masterfull-finanzas.onrender.com`;
-   - `CSRF_TRUSTED_ORIGINS`: el mismo dominio con esquema, por ejemplo `https://masterfull-finanzas.onrender.com`.
-5. `SECRET_KEY` será generada automáticamente por Render y `DEBUG` quedará en `False`.
-6. Aplica el Blueprint y espera que finalicen instalación, `collectstatic` y migraciones.
-7. Si necesitas administración, ejecuta `python manage.py createsuperuser` desde la Shell de Render.
-
-Si se agrega un dominio propio, añádelo también a `ALLOWED_HOSTS` y su URL HTTPS a `CSRF_TRUSTED_ORIGINS`, separados por comas.
-
-## Comprobaciones antes de publicar
-
-```bash
-python manage.py check
-python manage.py test
-python manage.py collectstatic --no-input
-```
-
-Revisa además `git status` y confirma que no aparezcan `.env`, `db.sqlite3`, certificados ni otros archivos privados.
+El proyecto original no contiene datos de usuario que migrar. Los archivos Django/Render/Supabase permanecen durante la validación del nuevo despliegue; se retirarán solo después de comprobar autenticación, Firestore y Storage contra el proyecto Firebase real.

@@ -1,212 +1,773 @@
-/* Masterfull Finanzas · SPA para GitHub Pages + Supabase */
+import { firebaseReady, firebaseStorageAvailable, getFirebaseServices } from "./js/firebase.js";
+import {
+  APP_TIME_ZONE, aggregateByMonth, dateInAppTimeZone, monthBounds, shiftMonth,
+  fromMinorUnits,
+} from "./js/finance.js";
+import {
+  categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, getProfile, listPage,
+  monthTotals, openReceipt, removeDocument, saveDocument, saveLedgerEntry,
+  saveMovement, updateUserProfile, uploadReceipt,
+} from "./js/data.js";
+
+const PAGE_SIZE = 50;
+const REFERENCE_LIMIT = 100;
+const REPORT_LIMIT = 500;
 const NAV = [
-  ['PRINCIPAL'],['resumen','dashboard','Resumen'],['movimientos','transfer','Movimientos'],
-  ['GESTIÓN'],['cuentas','wallet','Cuentas'],['propietarios','users','Titulares'],['instituciones','wallet','Instituciones'],['tarjetas','card','Tarjetas'],['presupuestos','budget','Presupuestos'],['categorias','tag','Categorías'],
-  ['PLANIFICACIÓN'],['metas','target','Metas de ahorro'],['deudas','debt','Deudas'],['recurrentes','repeat','Recurrentes'],['flujo','calendar','Flujo mensual'],['reportes','chart','Reportes']
+  ["PRINCIPAL"], ["resumen", "dashboard", "Resumen"], ["movimientos", "transfer", "Movimientos"],
+  ["operaciones"], ["transferencias", "transfer", "Transferencias"], ["pagosTarjeta", "card", "Pagos de tarjetas"],
+  ["GESTIÓN"], ["cuentas", "wallet", "Cuentas"], ["personas", "users", "Personas"],
+  ["propietarios", "users", "Titulares"], ["instituciones", "wallet", "Instituciones"], ["tarjetas", "card", "Tarjetas"],
+  ["categorias", "tag", "Categorías"], ["presupuestos", "budget", "Presupuestos"],
+  ["PLANIFICACIÓN"], ["metas", "target", "Metas de ahorro"], ["deudas", "debt", "Deudas"],
+  ["recurrentes", "repeat", "Gastos recurrentes"], ["flujo", "calendar", "Flujo mensual"], ["reportes", "chart", "Reportes"],
+  ["CUENTA"], ["perfil", "users", "Mi perfil"],
 ];
+
 const META = {
-  personas:{title:'Personas',eye:'PERFILES DEL HOGAR',singular:'persona'}, movimientos:{title:'Movimientos',eye:'INGRESOS Y EGRESOS',singular:'movimiento'},
-  cuentas:{title:'Cuentas',eye:'TU DINERO DISPONIBLE',singular:'cuenta'}, propietarios:{title:'Titulares',eye:'PERSONAS, EMPRESAS Y CUENTAS COMPARTIDAS',singular:'titular'}, instituciones:{title:'Instituciones financieras',eye:'BANCOS Y ENTIDADES',singular:'institución'}, tarjetas:{title:'Tarjetas',eye:'CRÉDITO Y PAGOS',singular:'tarjeta'},
-  presupuestos:{title:'Presupuestos',eye:'CONTROL MENSUAL',singular:'presupuesto'}, categorias:{title:'Categorías',eye:'ORGANIZACIÓN',singular:'categoría'},
-  metas:{title:'Metas de ahorro',eye:'PLANIFICACIÓN',singular:'meta'}, deudas:{title:'Deudas',eye:'COMPROMISOS',singular:'deuda'},
-  recurrentes:{title:'Gastos recurrentes',eye:'PAGOS PROGRAMADOS',singular:'gasto recurrente'}, flujo:{title:'Flujo mensual',eye:'EVOLUCIÓN DEL MES'}, reportes:{title:'Reportes',eye:'ANÁLISIS FINANCIERO'}
+  personas: { title: "Personas", eye: "PERFILES DEL HOGAR", singular: "persona" },
+  propietarios: { title: "Titulares", eye: "PERSONAS, EMPRESAS Y CUENTAS COMPARTIDAS", singular: "titular" },
+  instituciones: { title: "Instituciones financieras", eye: "BANCOS Y ENTIDADES", singular: "institución" },
+  cuentas: { title: "Cuentas", eye: "TU DINERO DISPONIBLE", singular: "cuenta" },
+  tarjetas: { title: "Tarjetas", eye: "CRÉDITO Y PAGOS", singular: "tarjeta" },
+  categorias: { title: "Categorías", eye: "ORGANIZACIÓN", singular: "categoría" },
+  movimientos: { title: "Movimientos", eye: "INGRESOS Y EGRESOS", singular: "movimiento" },
+  transferencias: { title: "Transferencias", eye: "ENTRE TUS CUENTAS", singular: "transferencia" },
+  pagosTarjeta: { title: "Pagos de tarjetas", eye: "PAGOS DE DEUDA", singular: "pago de tarjeta" },
+  presupuestos: { title: "Presupuestos", eye: "CONTROL MENSUAL", singular: "presupuesto" },
+  metas: { title: "Metas de ahorro", eye: "PLANIFICACIÓN", singular: "meta" },
+  deudas: { title: "Deudas", eye: "COMPROMISOS", singular: "deuda" },
+  recurrentes: { title: "Gastos recurrentes", eye: "PAGOS PROGRAMADOS", singular: "gasto recurrente" },
 };
-const SCHEMAS = {
-  personas:[['nombre','Nombre completo','text'],['relacion','Relación','select',['TITULAR','PAREJA','HIJO/A','FAMILIAR','OTRO']],['email','Correo','email'],['telefono','Teléfono','text'],['color','Color','color']],
-  propietarios:[['nombre','Nombre del titular','text'],['tipo','Tipo de titular','select',['PERSONA','EMPRESA','COMPARTIDA']]],
-  instituciones:[['nombre','Nombre','text'],['tipo','Tipo de institución','select',['BANCO','CAJA','FINANCIERA','BILLETERA_DIGITAL','COOPERATIVA','OTRA']],['pais','País','select',['PE','OTRO']]],
-  cuentas:[['propietario_id','Titular','relation','propietarios'],['nombre','Alias de la cuenta','text'],['tipo','Tipo de cuenta','select',['EFECTIVO','BANCO','YAPE','PLIN','TARJETA_DE_DEBITO','TARJETA_DE_CREDITO','AHORRO','BILLETERA_DIGITAL','INVERSION','PRESTAMO','CREDITO','CAJA','OTRO']],['institucion_id','Institución financiera','relation','instituciones'],['saldo_inicial','Saldo actual','number'],['moneda','Moneda','select',['PEN','USD','EUR','GBP','JPY','CLP','COP','MXN','BRL']]],
-  categorias:[['nombre','Nombre','text'],['tipo','Tipo','select',['INGRESO','GASTO']],['color','Color','color']],
-  tarjetas:[['tipo','Tipo de tarjeta','select',['CREDITO','DEBITO']],['nombre','Nombre de la tarjeta','text'],['entidad','Entidad emisora','select',['OH','CMR','BCP','INTERBANK','BBVA','SCOTIABANK','OTRA']],['cuenta_id','Cuenta bancaria vinculada','relation','cuentas'],['linea_credito','Línea de crédito','number'],['saldo_inicial_usado','Deuda inicial utilizada','number'],['dia_cierre','Día de cierre','number'],['dia_pago','Día límite de pago','number']],
-  movimientos:[['tipo','Tipo','select',['INGRESO','GASTO']],['monto','Monto','number'],['fecha','Fecha','date'],['categoria_id','Categoría','relation','categorias'],['medio_pago','Forma de pago','select',['EFECTIVO','CUENTA_BANCARIA','YAPE','PLIN','TARJETA_DEBITO','TARJETA_CREDITO','OTRO']],['cuenta_id','Cuenta de origen o destino','relation','cuentas'],['tarjeta_id','Tarjeta utilizada','relation','tarjetas'],['numero_cuotas','Número de cuotas','number'],['descripcion','Descripción','text'],['notas','Notas','textarea']],
-  presupuestos:[['categoria_id','Categoría de gasto','relation','categorias'],['mes','Mes','month'],['limite','Límite','number']],
-  metas:[['nombre','Nombre de la meta','text'],['monto_objetivo','Monto objetivo','number'],['monto_actual','Monto ahorrado','number'],['fecha_objetivo','Fecha objetivo','date']],
-  deudas:[['acreedor','Acreedor','text'],['descripcion','Descripción','text'],['monto_total','Monto total','number'],['monto_pagado','Monto pagado','number'],['fecha_vencimiento','Vencimiento','date'],['estado','Estado','select',['PENDIENTE','PAGADA']]],
-  recurrentes:[['nombre','Nombre','text'],['servicio','Servicio','select',['LUZ','AGUA','INTERNET','ALQUILER','GAS','TELÉFONO','SEGURO','OTRO']],['categoria_id','Categoría','relation','categorias'],['monto_estimado','Monto estimado','number'],['frecuencia','Frecuencia','select',['MENSUAL','QUINCENAL','SEMANAL','ANUAL']],['proxima_fecha','Próxima fecha','date']]
+
+const OPTIONS = {
+  relacion: ["TITULAR", "PAREJA", "HIJO/A", "FAMILIAR", "OTRO"],
+  tipoPropietario: ["PERSONA", "EMPRESA", "COMPARTIDA"],
+  tipoInstitucion: ["BANCO", "CAJA", "FINANCIERA", "BILLETERA_DIGITAL", "COOPERATIVA", "OTRA"],
+  pais: ["PE", "OTRO"],
+  tipoCuenta: ["EFECTIVO", "BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "AHORRO", "BILLETERA_DIGITAL", "INVERSION", "PRESTAMO", "CREDITO", "CAJA", "OTRO"],
+  moneda: ["PEN", "USD", "EUR", "GBP", "JPY", "CLP", "COP", "MXN", "BRL"],
+  tipoMovimiento: ["INGRESO", "GASTO"],
+  medioPago: ["EFECTIVO", "CUENTA_BANCARIA", "YAPE", "PLIN", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"],
+  tipoTarjeta: ["CREDITO", "DEBITO"],
+  entidadTarjeta: ["OH", "CMR", "BCP", "INTERBANK", "BBVA", "SCOTIABANK", "OTRA"],
+  estadoDeuda: ["PENDIENTE", "PAGADA"],
+  servicio: ["LUZ", "AGUA", "INTERNET", "ALQUILER", "GAS", "TELÉFONO", "SEGURO", "OTRO"],
+  frecuencia: ["MENSUAL", "QUINCENAL", "SEMANAL", "ANUAL"],
 };
-const DEMO = {
-  personas:[{id:'p1',nombre:'Titular',relacion:'TITULAR',color:'#315efb'}],
-  propietarios:[{id:'o1',nombre:'Titular',tipo:'PERSONA',estado:'ACTIVO'},{id:'o2',nombre:'Compartida',tipo:'COMPARTIDA',estado:'ACTIVO'}],
-  instituciones:[{id:'i1',user_id:'demo',nombre:'BCP',tipo:'BANCO',pais:'PE',estado:'ACTIVO'},{id:'i2',user_id:'demo',nombre:'Yape',tipo:'BILLETERA_DIGITAL',pais:'PE',estado:'ACTIVO'}],
-  cuentas:[{id:'c1',propietario_id:'o1',nombre:'Billetera',tipo:'EFECTIVO',institucion_id:null,saldo_inicial:1200,moneda:'PEN',fecha_saldo_inicial:todayISO(),color:'#315efb',icono:'EFECTIVO',estado:'ACTIVA'},{id:'c2',propietario_id:'o1',nombre:'Yape principal',tipo:'YAPE',institucion_id:'i2',saldo_inicial:350,moneda:'PEN',fecha_saldo_inicial:todayISO(),color:'#742284',icono:'BILLETERA',estado:'ACTIVA'}],
-  categorias:[{id:'ca1',nombre:'Sueldo',tipo:'INGRESO',color:'#17865d'},{id:'ca2',nombre:'Alimentación',tipo:'GASTO',color:'#e27058'},{id:'ca3',nombre:'Servicios',tipo:'GASTO',color:'#8269d8'}],
-  tarjetas:[{id:'t1',tipo:'CREDITO',nombre:'CMR principal',entidad:'CMR',cuenta_id:null,linea_credito:3000,saldo_inicial_usado:420,dia_cierre:15,dia_pago:5}],
-  movimientos:[{id:'m1',tipo:'INGRESO',monto:2200,fecha:todayISO(),categoria_id:'ca1',cuenta_id:'c1',persona_id:'p1',medio_pago:'CUENTA_BANCARIA',descripcion:'Ingreso mensual'},{id:'m2',tipo:'GASTO',monto:185,fecha:todayISO(),categoria_id:'ca2',cuenta_id:'c1',persona_id:'p1',medio_pago:'EFECTIVO',descripcion:'Compra semanal'}],
-  presupuestos:[{id:'pr1',categoria_id:'ca2',mes:todayISO().slice(0,7),limite:700}], metas:[{id:'me1',nombre:'Fondo de emergencia',monto_objetivo:5000,monto_actual:1200,fecha_objetivo:''}],
-  deudas:[{id:'d1',acreedor:'Compra personal',descripcion:'',monto_total:900,monto_pagado:300,estado:'PENDIENTE'}], recurrentes:[{id:'r1',nombre:'Internet hogar',servicio:'INTERNET',categoria_id:'ca3',monto_estimado:89.9,frecuencia:'MENSUAL',proxima_fecha:todayISO()}]
+
+const FIELDS = {
+  personas: [["nombre", "Nombre completo", "text"], ["relacion", "Relación", "select", "relacion"], ["email", "Correo", "email", null, true], ["telefono", "Teléfono", "tel", null, true], ["fecha_nacimiento", "Fecha de nacimiento", "date", null, true], ["color", "Color", "color", null, true]],
+  propietarios: [["nombre", "Nombre del titular", "text"], ["tipo", "Tipo de titular", "select", "tipoPropietario"]],
+  instituciones: [["nombre", "Nombre", "text"], ["tipo", "Tipo de institución", "select", "tipoInstitucion"], ["pais", "País", "select", "pais"]],
+  cuentas: [["propietario_id", "Titular", "relation", "propietarios"], ["nombre", "Alias de la cuenta", "text"], ["tipo", "Tipo de cuenta", "select", "tipoCuenta"], ["institucion_id", "Institución", "relation", "instituciones", true], ["saldo_inicial", "Saldo inicial", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_saldo_inicial", "Fecha del saldo inicial", "date"], ["estado", "Estado", "select", "estadoCuenta", true]],
+  tarjetas: [["tipo", "Tipo de tarjeta", "select", "tipoTarjeta"], ["nombre", "Nombre", "text"], ["entidad", "Entidad emisora", "select", "entidadTarjeta"], ["cuenta_id", "Cuenta vinculada (débito)", "relation", "cuentas", true], ["moneda", "Moneda", "select", "moneda"], ["linea_credito", "Línea de crédito", "money", null, true], ["saldo_inicial_usado", "Deuda inicial utilizada", "money", null, true], ["dia_cierre", "Día de cierre", "number", null, true], ["dia_pago", "Día límite de pago", "number", null, true], ["tasa_interes_anual", "Interés anual (%)", "number", null, true]],
+  categorias: [["nombre", "Nombre", "text"], ["tipo", "Tipo", "select", "tipoMovimiento"], ["color", "Color", "color", null, true]],
+  movimientos: [["tipo", "Tipo", "select", "tipoMovimiento"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["categoria_id", "Categoría", "relation", "categorias"], ["medio_pago", "Forma de pago", "select", "medioPago"], ["cuenta_id", "Cuenta", "relation", "cuentas", true], ["tarjeta_id", "Tarjeta", "relation", "tarjetas", true], ["numero_cuotas", "Número de cuotas", "number", null, true], ["persona_id", "Persona", "relation", "personas", true], ["descripcion", "Descripción", "text", null, true], ["notas", "Notas", "textarea", null, true]],
+  transferencias: [["cuenta_origen_id", "Cuenta de origen", "relation", "cuentas"], ["cuenta_destino_id", "Cuenta de destino", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
+  pagosTarjeta: [["tarjeta_id", "Tarjeta de crédito", "relation", "tarjetas"], ["cuenta_id", "Cuenta de pago", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
+  presupuestos: [["categoria_id", "Categoría de gasto", "relation", "categorias"], ["mes", "Mes", "month"], ["limite", "Límite", "money"], ["moneda", "Moneda", "select", "moneda"]],
+  metas: [["nombre", "Nombre de la meta", "text"], ["monto_objetivo", "Monto objetivo", "money"], ["monto_actual", "Monto ahorrado", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_objetivo", "Fecha objetivo", "date", null, true]],
+  deudas: [["acreedor", "Acreedor", "text"], ["descripcion", "Descripción", "text", null, true], ["monto_total", "Monto total", "money"], ["monto_pagado", "Monto pagado", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_vencimiento", "Vencimiento", "date", null, true], ["estado", "Estado", "select", "estadoDeuda"]],
+  recurrentes: [["nombre", "Nombre", "text"], ["servicio", "Servicio", "select", "servicio"], ["categoria_id", "Categoría", "relation", "categorias"], ["cuenta_id", "Cuenta de pago", "relation", "cuentas", true], ["tarjeta_id", "Tarjeta", "relation", "tarjetas", true], ["medio_pago", "Forma de pago", "select", "medioPago"], ["monto_estimado", "Monto estimado", "money"], ["moneda", "Moneda", "select", "moneda"], ["frecuencia", "Frecuencia", "select", "frecuencia"], ["proxima_fecha", "Próxima fecha", "date"]],
 };
-const ACCOUNT_NATURE={EFECTIVO:'ACTIVO',BANCO:'ACTIVO',YAPE:'ACTIVO',PLIN:'ACTIVO',TARJETA_DE_DEBITO:'ACTIVO',AHORRO:'ACTIVO',BILLETERA_DIGITAL:'ACTIVO',INVERSION:'ACTIVO',CAJA:'ACTIVO',OTRO:'ACTIVO',TARJETA_DE_CREDITO:'PASIVO',PRESTAMO:'PASIVO',CREDITO:'PASIVO'};
-const ACCOUNT_SUGGESTIONS={EFECTIVO:['Billetera','Caja principal','Caja chica','Efectivo personal','Caja del hogar','Dinero en casa'],BANCO:['Cuenta de ahorros','Cuenta sueldo','Cuenta corriente','Cuenta negocio'],YAPE:['Yape principal','Yape personal','Yape negocio'],PLIN:['Plin principal','Plin personal','Plin negocio'],TARJETA_DE_CREDITO:['CMR Falabella','Tarjeta Oh!','Ripley','Visa','Mastercard','Diners Club','American Express'],AHORRO:['Fondo de emergencia','Ahorro para vivienda','Ahorro para matrimonio','Ahorro para vacaciones','Ahorro para estudios','Ahorro para vehículo','Ahorro para negocio','Ahorro para jubilación'],INVERSION:['Fondo de inversión','Acciones','Criptomonedas','Depósito a plazo','AFP','Fondo mutuo']};
-const MONEY_FIELDS=new Set(['saldo_inicial','linea_credito','saldo_inicial_usado','monto','limite','monto_objetivo','monto_actual','monto_total','monto_pagado','monto_estimado']);
-const state={page:'resumen',user:null,data:{},demo:false,editing:null,accountFilters:{}}; let sb=null, authMode='login';
-const $=s=>document.querySelector(s), money=n=>`S/ ${Number(n||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-function currencyMoney(value,currency='PEN'){const symbols={PEN:'S/',USD:'US$',EUR:'€',GBP:'£',JPY:'¥',CLP:'CLP$',COP:'COL$',MXN:'MX$',BRL:'R$'};return `${symbols[currency]||currency} ${Number(value||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
-function todayISO(){return new Date().toISOString().slice(0,10)} function monthISO(){return todayISO().slice(0,7)}
-function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function toast(msg){const e=$('#toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2600)}
-function configured(){const c=window.MASTERFULL_CONFIG||{};return /^https:\/\/.+\.supabase\.co$/.test(c.supabaseUrl||'')&&!!c.supabaseAnonKey}
-function navHTML(){return NAV.map(x=>x.length===1?`<small>${x[0]}</small>`:`<a href="#${x[0]}" data-page="${x[0]}"><span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-${x[1]}"></use></svg></span>${x[2]}</a>`).join('')}
-async function boot(){ $('#navigation').innerHTML=navHTML(); $('#today').textContent=new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'short',year:'numeric'}).format(new Date()); bind();
-  if(!configured()){state.demo=true;state.user={id:'demo',email:'modo@demostracion.pe',user_metadata:{full_name:'Modo demostración'}};loadDemo();showApp();return}
-  sb=window.supabase.createClient(window.MASTERFULL_CONFIG.supabaseUrl,window.MASTERFULL_CONFIG.supabaseAnonKey);const {data}=await sb.auth.getSession();if(data.session){state.user=data.session.user;await loadAll();showApp()}else showAuth();sb.auth.onAuthStateChange(async(_,session)=>{if(session){state.user=session.user;await loadAll();showApp()}else showAuth()})}
-function bind(){window.addEventListener('hashchange',route);$('#add-main').onclick=()=>openForm(defaultEntity());$('#logout').onclick=async()=>state.demo?toast('El modo demostración no necesita cerrar sesión'):sb.auth.signOut();$('#auth-toggle').onclick=toggleAuth;$('#auth-form').onsubmit=submitAuth;$('#record-form').addEventListener('submit',saveForm);$('#quick-owner-form')?.addEventListener('submit',saveQuickOwner);$('#content').addEventListener('click',contentClick)}
-function showAuth(){$('#auth').classList.remove('hidden');$('#app').classList.add('hidden')} function showApp(){$('#auth').classList.add('hidden');$('#app').classList.remove('hidden');const name=state.user?.user_metadata?.full_name||state.user?.email?.split('@')[0]||'Mi cuenta';$('#profile-name').textContent=name;$('#avatar').textContent=name[0].toUpperCase();$('#profile-mode').textContent=state.demo?'Modo demostración':'Datos protegidos';route()}
-function toggleAuth(){authMode=authMode==='login'?'signup':'login';$('#auth-title').textContent=authMode==='login'?'Bienvenido de nuevo':'Crea tu cuenta';$('#auth-copy').textContent=authMode==='login'?'Ingresa para continuar organizando tus finanzas.':'Tus registros estarán separados y protegidos.';$('#auth-form button').textContent=authMode==='login'?'Iniciar sesión':'Crear mi cuenta';$('#auth-toggle').textContent=authMode==='login'?'¿No tienes cuenta? Crear cuenta':'¿Ya tienes cuenta? Iniciar sesión'}
-async function submitAuth(e){e.preventDefault();const email=$('#auth-email').value.trim(),password=$('#auth-password').value;const res=authMode==='login'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});if(res.error)toast(res.error.message);else toast(authMode==='login'?'Sesión iniciada':'Cuenta creada. Revisa tu correo si se solicita confirmación.')}
-function normalizeData(){(state.data.propietarios||[]).forEach(x=>{x.tipo=x.tipo||'PERSONA';x.estado=x.estado||'ACTIVO'});(state.data.instituciones||[]).forEach(x=>{x.estado=x.estado||'ACTIVO';if(state.demo&&!x.user_id)x.user_id='demo'});(state.data.cuentas||[]).forEach(x=>{x.estado=x.estado==='ARCHIVADA'?'INACTIVA':x.estado||'ACTIVA';x.fecha_saldo_inicial=x.fecha_saldo_inicial||todayISO();x.moneda=x.moneda||'PEN'});(state.data.tarjetas||[]).forEach(x=>x.tipo=x.tipo||'CREDITO');(state.data.movimientos||[]).forEach(x=>x.numero_cuotas=Number(x.numero_cuotas||1))}
-function loadDemo(){Object.entries(DEMO).forEach(([k,v])=>state.data[k]=JSON.parse(localStorage.getItem(`mf_${k}`)||JSON.stringify(v)));normalizeData()}
-async function ensureSharedOwner(){if((state.data.propietarios||[]).some(x=>x.tipo==='COMPARTIDA'))return;const shared={nombre:'Compartida',tipo:'COMPARTIDA',estado:'ACTIVO',user_id:state.user.id};const {data,error}=await sb.from('propietarios').insert(shared).select().single();if(!error)state.data.propietarios.unshift(data);else{const {data:owners}=await sb.from('propietarios').select('*').eq('tipo','COMPARTIDA');if(owners)state.data.propietarios=owners.concat(state.data.propietarios.filter(x=>x.tipo!=='COMPARTIDA'))}}
-async function loadAll(){for(const table of Object.keys(SCHEMAS)){const {data,error}=await sb.from(table).select('*').order('created_at',{ascending:false});state.data[table]=error?[]:data}normalizeData();await ensureSharedOwner()}
-function route(){state.page=(location.hash||'#resumen').slice(1);if(state.page==='personas')state.page='propietarios';if(![...Object.keys(META),'resumen'].includes(state.page))state.page='resumen';document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.page===state.page));const m=META[state.page]||{title:'Tu dinero, en contexto',eye:`RESUMEN DE ${new Intl.DateTimeFormat('es-PE',{month:'long'}).format(new Date()).toUpperCase()}`};$('#page-title').textContent=m.title;$('#page-eyebrow').textContent=m.eye;$('#add-main').classList.toggle('hidden',!SCHEMAS[state.page]);render()}
-function sum(type){return (state.data.movimientos||[]).filter(x=>x.tipo===type&&String(x.fecha).startsWith(monthISO())).reduce((a,x)=>a+Number(x.monto),0)}
-function accountBalance(c){const ms=(state.data.movimientos||[]).filter(x=>x.cuenta_id===c.id);return Number(c.saldo_inicial||0)+ms.reduce((a,x)=>a+(x.tipo==='INGRESO'?1:-1)*Number(x.monto),0)}
-function debtTotal(){return (state.data.deudas||[]).reduce((a,x)=>a+Math.max(0,Number(x.monto_total)-Number(x.monto_pagado)),0)}
-function cat(id){return (state.data.categorias||[]).find(x=>x.id===id)||{nombre:'Sin categoría',color:'#94a3b8'}}
-function account(id){return (state.data.cuentas||[]).find(x=>x.id===id)||null}
-function card(id){return (state.data.tarjetas||[]).find(x=>x.id===id)||null}
-function owner(id){return (state.data.propietarios||[]).find(x=>x.id===id)||null}
-function institution(id){return (state.data.instituciones||[]).find(x=>x.id===id)||null}
-function accountNature(item){return ACCOUNT_NATURE[item?.tipo]||'ACTIVO'}
-function cardUsed(item){return Number(item?.saldo_inicial_usado||0)+(state.data.movimientos||[]).filter(x=>x.tipo==='GASTO'&&x.medio_pago==='TARJETA_CREDITO'&&x.tarjeta_id===item?.id).reduce((total,x)=>total+Number(x.monto||0),0)}
-function render(){if(state.page==='resumen')renderDashboard();else if(state.page==='cuentas')renderAccounts();else if(state.page==='flujo'||state.page==='reportes')renderReports();else renderEntity(state.page)}
-function filterOptions(items,value,label,display=x=>x.nombre){return `<option value="">${label}</option>${items.map(x=>`<option value="${x.id||x}" ${(x.id||x)===value?'selected':''}>${esc(display(x))}</option>`).join('')}`}
-function renderAccounts(){
- const f=state.accountFilters,all=state.data.cuentas||[],owners=(state.data.propietarios||[]).filter(x=>x.estado!=='INACTIVO');
- const visible=all.filter(x=>{const o=owner(x.propietario_id),i=institution(x.institucion_id),text=`${x.nombre} ${o?.nombre||''} ${i?.nombre||''}`.toLowerCase();return(!f.search||text.includes(f.search.toLowerCase()))&&(!f.owner||x.propietario_id===f.owner)&&(!f.type||x.tipo===f.type)});
- const totals={};all.forEach(x=>{const currency=x.moneda||'PEN',value=Math.abs(accountBalance(x));totals[currency]??={assets:0,liabilities:0};accountNature(x)==='PASIVO'?totals[currency].liabilities+=value:totals[currency].assets+=value});
- const totalLines=(key,net=false)=>Object.entries(totals).map(([currency,v])=>`<small>${currency}</small><strong>${currencyMoney(net?v.assets-v.liabilities:v[key],currency)}</strong>`).join('')||'<strong>Sin saldos</strong>';
- const types=Object.keys(ACCOUNT_NATURE);
- $('#content').innerHTML=`<section class="account-summary"><article><span>Disponible</span>${totalLines('assets')}</article><article><span>Deudas</span>${totalLines('liabilities')}</article><article><span>Patrimonio neto</span>${totalLines('',true)}</article><article><span>Total de cuentas</span><strong>${all.length}</strong></article></section><section class="account-filters panel"><input name="search" value="${esc(f.search||'')}" placeholder="Buscar por cuenta, institución o titular"><select name="owner">${filterOptions(owners,f.owner,'Todos los titulares')}</select><select name="type">${filterOptions(types,f.type,'Todos los tipos',x=>optionLabel(x))}</select><button type="button" class="btn primary" data-account-filter>Buscar</button><button type="button" class="btn secondary" data-account-clear>Limpiar</button></section><div class="section-head"><div><h2>${visible.length} cuenta${visible.length===1?'':'s'}</h2><p class="caption">Titular, tipo, institución y saldo en una sola vista.</p></div></div><section class="account-list">${visible.length?visible.map(x=>{const o=owner(x.propietario_id),i=institution(x.institucion_id);return `<article class="account-card"><div class="account-main"><strong>${esc(x.nombre)}</strong><small>${esc(o?.nombre||'Titular pendiente')} · ${esc(optionLabel(x.tipo))}${i?` · ${esc(i.nombre)}`:''}</small></div><div class="account-balance"><strong>${currencyMoney(Math.abs(accountBalance(x)),x.moneda)}</strong><small>${esc(x.moneda)}</small></div><div class="account-actions"><button data-account-movements="${x.id}">Movimientos</button><button data-edit="cuentas" data-id="${x.id}">Editar</button><button class="danger" data-delete="cuentas" data-id="${x.id}">Eliminar</button></div></article>`}).join(''):'<div class="empty panel">No hay cuentas para estos filtros.</div>'}</section>`;
+
+const LIST_FIELDS = {
+  personas: ["nombre", "relacion", "email", "telefono"], propietarios: ["nombre", "tipo"],
+  instituciones: ["nombre", "tipo", "pais"], cuentas: ["nombre", "propietario_id", "tipo", "institucion_id", "saldo_actual", "moneda"],
+  tarjetas: ["nombre", "tipo", "entidad", "utilizado", "linea_credito", "moneda"], categorias: ["nombre", "tipo"],
+  movimientos: ["fecha", "tipo", "categoria_id", "origen_movimiento", "medio_pago", "monto", "moneda", "comprobante"],
+  transferencias: ["fecha", "cuenta_origen_id", "cuenta_destino_id", "monto", "moneda"],
+  pagosTarjeta: ["fecha", "tarjeta_id", "cuenta_id", "monto", "moneda"],
+  presupuestos: ["mes", "categoria_id", "limite", "moneda"], metas: ["nombre", "monto_objetivo", "monto_actual", "moneda", "fecha_objetivo"],
+  deudas: ["acreedor", "monto_total", "monto_pagado", "moneda", "fecha_vencimiento", "estado"],
+  recurrentes: ["nombre", "servicio", "monto_estimado", "moneda", "frecuencia", "proxima_fecha"],
+};
+
+const BASE_INSTITUTIONS = [
+  ["BCP", "BANCO", "PE"], ["BBVA", "BANCO", "PE"], ["Interbank", "BANCO", "PE"],
+  ["Scotiabank", "BANCO", "PE"], ["Banco de la Nación", "BANCO", "PE"], ["BanBif", "BANCO", "PE"],
+  ["Banco Pichincha", "BANCO", "PE"], ["Mibanco", "BANCO", "PE"], ["Caja Arequipa", "CAJA", "PE"],
+  ["Caja Huancayo", "CAJA", "PE"], ["Caja Piura", "CAJA", "PE"], ["Financiera Oh!", "FINANCIERA", "PE"],
+  ["Banco Falabella", "BANCO", "PE"], ["Banco Ripley", "BANCO", "PE"], ["Yape", "BILLETERA_DIGITAL", "PE"],
+  ["Plin", "BILLETERA_DIGITAL", "PE"], ["PayPal", "BILLETERA_DIGITAL", "OTRO"], ["Mercado Pago", "BILLETERA_DIGITAL", "OTRO"],
+].map(([nombre, tipo, pais], index) => ({ id: `base-${index}`, nombre, tipo, pais, base: true }));
+
+const ACCOUNT_NATURE = { TARJETA_DE_CREDITO: "PASIVO", PRESTAMO: "PASIVO", CREDITO: "PASIVO" };
+const CURRENCY_SYMBOLS = { PEN: "S/", USD: "US$", EUR: "€", GBP: "£", JPY: "¥", CLP: "CLP$", COP: "COL$", MXN: "MX$", BRL: "R$" };
+const $ = (selector) => document.querySelector(selector);
+const state = {
+  user: null, profile: {}, page: "resumen", data: {}, entityCursor: null, entityHasMore: false,
+  reportRows: [], reportCursor: null, reportHasMore: false, editing: null, filter: {}, busy: false,
+  accountFilters: {}, movementAccountFilter: null,
+};
+let services = null;
+let authMode = "login";
+
+function esc(value = "") {
+  return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
-function renderDashboard(){const income=sum('INGRESO'),expense=sum('GASTO'),balance=income-expense,accounts=(state.data.cuentas||[]).reduce((a,x)=>a+accountBalance(x),0),rate=income?Math.round(balance/income*100):0;const mov=[...(state.data.movimientos||[])].sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).slice(0,6);const cats={};(state.data.movimientos||[]).filter(x=>x.tipo==='GASTO'&&String(x.fecha).startsWith(monthISO())).forEach(x=>cats[x.categoria_id]=(cats[x.categoria_id]||0)+Number(x.monto));
- $('#content').innerHTML=`<section class="summary-grid"><article class="hero-card"><div class="hero-head"><div><span class="overline">Posición actual</span><h2>Disponible en tus cuentas</h2></div><span class="date-chip">Actualizado hoy</span></div><div class="main-balance"><small>S/</small>${Number(accounts).toLocaleString('es-PE',{minimumFractionDigits:2})}</div><p class="caption">Saldo combinado de ${(state.data.cuentas||[]).length} cuentas activas.</p><div class="cashflow"><div><span>INGRESOS DEL MES</span><strong class="positive">+ ${money(income)}</strong></div><div><span>EGRESOS DEL MES</span><strong class="negative">− ${money(expense)}</strong></div><div><span>BALANCE MENSUAL</span><strong class="${balance>=0?'positive':'negative'}">${money(balance)}</strong></div></div></article><aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income?`Conservaste el ${rate}% de tus ingresos.`:'Empieza registrando el movimiento de hoy.'}</h2><p>${balance>=0?'Tu balance es positivo; mantén el registro al día.':'Tus egresos superaron lo ingresado durante este periodo.'}</p><div class="quick-actions"><button class="btn" data-new="movimientos" data-type="INGRESO">↓ Ingreso</button><button class="btn" data-new="movimientos" data-type="GASTO">↑ Egreso</button></div></aside></section><section class="stats"><article class="stat-card"><span>PATRIMONIO ESTIMADO</span><strong>${money(accounts-debtTotal())}</strong></article><article class="stat-card"><span>DEUDAS PENDIENTES</span><strong class="negative">${money(debtTotal())}</strong></article><article class="stat-card"><span>METAS ACTIVAS</span><strong>${(state.data.metas||[]).length}</strong></article></section><section class="two-column"><article class="panel"><div class="panel-head"><div><span class="overline">TU HISTORIA RECIENTE</span><h2>Movimientos</h2></div><a class="link-button" href="#movimientos">Abrir historial →</a></div>${mov.length?mov.map(x=>`<div class="transaction"><span class="transaction-icon ${x.tipo==='INGRESO'?'income':''}">${x.tipo==='INGRESO'?'↓':'↑'}</span><span class="transaction-info"><strong>${esc(x.descripcion||cat(x.categoria_id).nombre)}</strong><small>${esc(x.fecha)} · ${esc(cat(x.categoria_id).nombre)}</small></span><strong class="amount ${x.tipo==='INGRESO'?'positive':'negative'}">${x.tipo==='INGRESO'?'+':'−'} ${money(x.monto)}</strong></div>`).join(''):'<div class="empty">Aún no hay movimientos.</div>'}</article><article class="panel"><div class="panel-head"><div><span class="overline">EN QUÉ SE FUE</span><h2>Egresos por categoría</h2></div></div>${Object.entries(cats).length?Object.entries(cats).map(([id,v])=>`<div class="category-row"><div><span>${esc(cat(id).nombre)}</span><strong>${money(v)}</strong></div><div class="bar"><i style="width:${expense?v/expense*100:0}%;background:${cat(id).color}"></i></div></div>`).join(''):'<div class="empty">Sin egresos este mes.</div>'}</article></section>`}
-function defaultEntity(){return SCHEMAS[state.page]?state.page:'movimientos'}
-function renderEntity(entity){let rows=state.data[entity]||[];if(entity==='movimientos'&&state.movementAccountFilter)rows=rows.filter(x=>x.cuenta_id===state.movementAccountFilter);const cols={personas:['nombre','relacion','email'],propietarios:['nombre','tipo'],instituciones:['nombre','tipo','pais'],categorias:['nombre','tipo'],tarjetas:['nombre','tipo','entidad','origen_tarjeta'],movimientos:['fecha','categoria_id','medio_pago','origen_movimiento','tipo','monto'],presupuestos:['mes','categoria_id','limite'],metas:['nombre','monto_objetivo','monto_actual','fecha_objetivo'],deudas:['acreedor','monto_total','monto_pagado','estado'],recurrentes:['nombre','servicio','monto_estimado','proxima_fecha']}[entity];const labels={categoria_id:'Categoría',medio_pago:'Forma de pago',origen_tarjeta:'Cuenta o línea',origen_movimiento:'Cuenta o tarjeta',saldo_inicial:'Saldo inicial',linea_credito:'Línea',saldo_inicial_usado:'Utilizado',monto_objetivo:'Objetivo',monto_actual:'Ahorrado',monto_total:'Total',monto_pagado:'Pagado',proxima_fecha:'Próximo pago'};
- const filterNotice=entity==='movimientos'&&state.movementAccountFilter?`<div class="flow-guidance">Movimientos de ${esc(account(state.movementAccountFilter)?.nombre||'la cuenta seleccionada')} <button data-clear-movement-filter>Ver todos</button></div>`:'';
- const description=entity==='propietarios'?'Define quién es el titular de cada cuenta.':entity==='instituciones'?'Puedes editar o eliminar las instituciones creadas por ti; el catálogo base está protegido.':`Administra la información de ${META[entity].title.toLowerCase()}.`;
- $('#content').innerHTML=filterNotice+`<div class="section-head"><div><h2>${rows.length} registro${rows.length===1?'':'s'}</h2><p class="caption">${description}</p></div></div><section class="panel table-panel"><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${labels[c]||c.replaceAll('_',' ')}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${cols.map(c=>`<td>${formatCell(c,r[c],r)}</td>`).join('')}<td class="actions">${entity==='instituciones'&&!r.user_id?'<span class="muted">Catálogo base</span>':`<button data-edit="${entity}" data-id="${r.id}">Editar</button><button class="danger" data-delete="${entity}" data-id="${r.id}">Eliminar</button>`}</td></tr>`).join(''):`<tr><td class="empty" colspan="${cols.length+1}">No hay registros todavía. Usa “Nuevo registro” para comenzar.</td></tr>`}</tbody></table></div></section>`}
-function formatCell(k,v,r){if(k==='categoria_id')return esc(cat(v).nombre);if(k==='medio_pago')return esc(String(v||'—').replaceAll('_',' '));if(k==='origen_tarjeta'){if(r.tipo==='DEBITO')return esc(account(r.cuenta_id)?.nombre||'Sin cuenta vinculada');const used=cardUsed(r);return `<strong>Línea ${money(r.linea_credito)}</strong><small class="table-note">Utilizado ${money(used)} · Disponible ${money(Math.max(0,Number(r.linea_credito||0)-used))}</small>`}if(k==='origen_movimiento'){const source=r.tarjeta_id?card(r.tarjeta_id):account(r.cuenta_id);return esc(source?.nombre||'—')}if(['monto','limite','saldo_inicial','linea_credito','saldo_inicial_usado','monto_objetivo','monto_actual','monto_total','monto_pagado','monto_estimado'].includes(k))return `<strong>${money(v)}</strong>`;if(k==='tipo')return `<span class="badge ${String(v).toLowerCase()}">${esc(optionLabel(String(v)))}</span>`;return esc(v||'—')}
-function renderReports(){const byMonth={};(state.data.movimientos||[]).forEach(x=>{const m=String(x.fecha).slice(0,7);byMonth[m]??={income:0,expense:0};byMonth[m][x.tipo==='INGRESO'?'income':'expense']+=Number(x.monto)});const rows=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0]));$('#content').innerHTML=`<section class="stats"><article class="stat-card"><span>INGRESOS ACUMULADOS</span><strong class="positive">${money((state.data.movimientos||[]).filter(x=>x.tipo==='INGRESO').reduce((a,x)=>a+Number(x.monto),0))}</strong></article><article class="stat-card"><span>EGRESOS ACUMULADOS</span><strong class="negative">${money((state.data.movimientos||[]).filter(x=>x.tipo==='GASTO').reduce((a,x)=>a+Number(x.monto),0))}</strong></article><article class="stat-card"><span>BALANCE DEL MES</span><strong>${money(sum('INGRESO')-sum('GASTO'))}</strong></article></section><section class="panel table-panel"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Egresos</th><th>Balance</th></tr></thead><tbody>${rows.length?rows.map(([m,x])=>`<tr><td><strong>${m}</strong></td><td class="positive">${money(x.income)}</td><td class="negative">${money(x.expense)}</td><td><strong>${money(x.income-x.expense)}</strong></td></tr>`).join(''):'<tr><td colspan="4" class="empty">Registra movimientos para generar el análisis.</td></tr>'}</tbody></table></section>`}
-function contentClick(e){const n=e.target.closest('[data-new]'),ed=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]'),filter=e.target.closest('[data-account-filter]'),clear=e.target.closest('[data-account-clear]'),movements=e.target.closest('[data-account-movements]'),clearMovements=e.target.closest('[data-clear-movement-filter]');if(n)openForm(n.dataset.new,null,{tipo:n.dataset.type});if(ed)openForm(ed.dataset.edit,(state.data[ed.dataset.edit]||[]).find(x=>x.id===ed.dataset.id));if(del)remove(del.dataset.delete,del.dataset.id);if(filter){const controls=$('.account-filters').querySelectorAll('input,select');state.accountFilters=Object.fromEntries(Array.from(controls).map(x=>[x.name,x.value.trim()]));renderAccounts()}if(clear){state.accountFilters={};renderAccounts()}if(movements){state.movementAccountFilter=movements.dataset.accountMovements;location.hash='movimientos'}if(clearMovements){state.movementAccountFilter=null;renderEntity('movimientos')}}
-function handleOwnerChoice(e){if(e.target.value!=='__new__')return;e.target.value='';const dialog=$('#quick-owner-dialog');$('#quick-owner-form').reset();dialog.showModal();dialog.querySelector('[name="nombre"]').focus()}
-async function saveQuickOwner(e){e.preventDefault();if(e.submitter?.value==='cancel'){$('#quick-owner-dialog').close();return}const form=e.currentTarget,name=form.elements.nombre.value.trim().replace(/\s+/g,' '),type=form.elements.tipo.value;if(!name){toast('El nombre del titular es obligatorio.');return}if(name.length>80){toast('El nombre no puede superar 80 caracteres.');return}if((state.data.propietarios||[]).some(x=>x.nombre.trim().toLowerCase()===name.toLowerCase())){toast('Ya existe un titular con ese nombre.');return}const obj={nombre:name,tipo:type,estado:'ACTIVO'};if(state.demo){obj.id=crypto.randomUUID();state.data.propietarios.unshift(obj);localStorage.setItem('mf_propietarios',JSON.stringify(state.data.propietarios))}else{obj.user_id=state.user.id;const {data,error}=await sb.from('propietarios').insert(obj).select().single();if(error){toast(error.message);return}state.data.propietarios.unshift(data);obj.id=data.id}const select=$('#record-form [name="propietario_id"]');const option=document.createElement('option');option.value=obj.id;option.textContent=obj.nombre;select.insertBefore(option,select.querySelector('option[value="__new__"]'));select.value=obj.id;$('#quick-owner-dialog').close();toast('Titular agregado')}
-function openForm(entity,row=null,preset={}){
-  state.editing={entity,id:row?.id||null};
-  const defaults=entity==='tarjetas'?{tipo:'CREDITO',saldo_inicial_usado:0}:entity==='movimientos'?{numero_cuotas:1}:entity==='cuentas'?{saldo_inicial:0,moneda:'PEN'}:entity==='propietarios'?{tipo:'PERSONA'}:entity==='instituciones'?{tipo:'BANCO',pais:'PE'}:{};
-  const action=row?'Editar':['movimientos','propietarios'].includes(entity)?'Nuevo':'Nueva';
-  $('#dialog-title').textContent=`${action} ${META[entity].singular}`;
-  $('#form-fields').innerHTML=`<div id="flow-guidance" class="flow-guidance wide"></div>`+SCHEMAS[entity].map(([name,label,type,opt])=>fieldHTML(name,label,type,opt,row?.[name]??preset[name]??defaults[name]??'')).join('')+(entity==='cuentas'?'<datalist id="account-name-suggestions"></datalist>':'');
-  $('#record-form [name="medio_pago"]')?.addEventListener('change',updateFormFlow);
-  $('#record-form [name="tipo"]')?.addEventListener('change',updateFormFlow);
-  $('#record-form [name="propietario_id"]')?.addEventListener('change',handleOwnerChoice);
+
+function toast(message) {
+  const element = $("#toast");
+  element.textContent = message;
+  element.classList.add("show");
+  window.setTimeout(() => element.classList.remove("show"), 3200);
+}
+
+function money(value, currency = "PEN") {
+  const digits = ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2;
+  return `${CURRENCY_SYMBOLS[currency] || currency} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function moneyFromMinor(value, currency = "PEN") {
+  return money(fromMinorUnits(value, currency), currency);
+}
+
+function todayISO() { return dateInAppTimeZone(); }
+function currentMonth() { return todayISO().slice(0, 7); }
+function newId() { return crypto.randomUUID(); }
+
+function navHTML() {
+  return NAV.map((item) => item.length === 1
+    ? `<small>${esc(item[0])}</small>`
+    : `<a href="#${item[0]}" data-page="${item[0]}"><span class="nav-icon"><svg aria-hidden="true"><use href="#i-${item[1]}"></use></svg></span>${esc(item[2])}</a>`).join("");
+}
+
+function bind() {
+  $("#navigation").innerHTML = navHTML();
+  $("#today").textContent = new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeZone: APP_TIME_ZONE }).format(new Date());
+  window.addEventListener("hashchange", () => void route());
+  $("#auth-form").addEventListener("submit", submitAuth);
+  $("#auth-toggle").addEventListener("click", toggleAuth);
+  $("#forgot-password").addEventListener("click", resetPassword);
+  $("#logout").addEventListener("click", () => services.authSdk.signOut(services.auth));
+  $("#add-main").addEventListener("click", () => openForm(state.page));
+  $("#content").addEventListener("click", (event) => void contentClick(event));
+  $("#content").addEventListener("submit", (event) => {
+    if (event.target.matches("[data-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
+    if (event.target.matches("[data-account-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
+    if (event.target.matches("[data-profile-form]")) { event.preventDefault(); void saveProfile(event.target); }
+  });
+  $("#record-form").addEventListener("submit", (event) => void saveForm(event));
+  $("#record-form").addEventListener("change", (event) => updateFormFlow(event.target));
+}
+
+function showAuth(setupMessage = "") {
+  $("#auth").classList.remove("hidden");
+  $("#app").classList.add("hidden");
+  const warning = $("#firebase-setup-warning");
+  if (warning) {
+    warning.textContent = setupMessage;
+    warning.classList.toggle("hidden", !setupMessage);
+  }
+  $("#auth-form").classList.toggle("hidden", Boolean(setupMessage));
+  $("#auth-toggle").classList.toggle("hidden", Boolean(setupMessage));
+  $("#forgot-password").classList.toggle("hidden", Boolean(setupMessage));
+}
+
+function showApp() {
+  $("#auth").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  const displayName = state.profile.displayName || state.user.displayName || state.user.email?.split("@")[0] || "Mi cuenta";
+  $("#profile-name").textContent = displayName;
+  $("#avatar").textContent = displayName.trim()[0]?.toUpperCase() || "M";
+  $("#profile-mode").textContent = "Datos protegidos";
+}
+
+function toggleAuth() {
+  authMode = authMode === "login" ? "signup" : "login";
+  const signingUp = authMode === "signup";
+  $("#auth-name-field").classList.toggle("hidden", !signingUp);
+  $("#auth-name").required = signingUp;
+  $("#auth-title").textContent = signingUp ? "Crea tu cuenta" : "Bienvenido de nuevo";
+  $("#auth-copy").textContent = signingUp ? "Tus finanzas estarán separadas y protegidas." : "Ingresa para continuar organizando tus finanzas.";
+  $("#auth-submit").textContent = signingUp ? "Crear cuenta" : "Iniciar sesión";
+  $("#auth-toggle").textContent = signingUp ? "¿Ya tienes cuenta? Iniciar sesión" : "¿No tienes cuenta? Crear cuenta";
+}
+
+function authError(error) {
+  const messages = {
+    "auth/invalid-credential": "El correo o la contraseña no son correctos.",
+    "auth/email-already-in-use": "Ya existe una cuenta con ese correo.",
+    "auth/weak-password": "La contraseña debe cumplir la política configurada en Firebase.",
+    "auth/too-many-requests": "Hubo demasiados intentos. Espera un momento e inténtalo de nuevo.",
+    "auth/operation-not-allowed": "Activa el proveedor Correo/contraseña en Firebase Authentication.",
+    "auth/network-request-failed": "No se pudo conectar con Firebase. Revisa la configuración y tu conexión.",
+  };
+  return messages[error?.code] || error?.message || "No se pudo completar la operación.";
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  const email = $("#auth-email").value.trim();
+  const password = $("#auth-password").value;
+  try {
+    if (authMode === "signup") {
+      const name = $("#auth-name").value.trim();
+      const credential = await services.authSdk.createUserWithEmailAndPassword(services.auth, email, password);
+      await services.authSdk.updateProfile(credential.user, { displayName: name });
+      await ensureUserProfile(credential.user);
+      await saveDocument(credential.user.uid, "propietarios", { nombre: "Compartida", tipo: "COMPARTIDA", estado: "ACTIVO" });
+      toast("Cuenta creada. Ya puedes organizar tus finanzas.");
+    } else {
+      await services.authSdk.signInWithEmailAndPassword(services.auth, email, password);
+    }
+  } catch (error) { toast(authError(error)); }
+}
+
+async function resetPassword() {
+  const email = $("#auth-email").value.trim();
+  if (!email) { toast("Escribe tu correo para enviarte el enlace de recuperación."); $("#auth-email").focus(); return; }
+  try {
+    await services.authSdk.sendPasswordResetEmail(services.auth, email);
+    toast("Si la cuenta existe, Firebase enviará las instrucciones de recuperación.");
+  } catch (error) { toast(authError(error)); }
+}
+
+async function loadReferenceData() {
+  const names = ["cuentas", "tarjetas", "personas", "propietarios", "instituciones", "categorias"];
+  const pages = await Promise.all(names.map((name) => listPage(state.user.uid, name, { limit: REFERENCE_LIMIT, orderField: "nombre", direction: "asc" })));
+  names.forEach((name, index) => { state.data[name] = pages[index].rows; });
+  state.data.instituciones = [...BASE_INSTITUTIONS, ...pages[names.indexOf("instituciones")].rows];
+}
+
+async function onSignedIn(user) {
+  state.user = user;
+  await ensureUserProfile(user);
+  state.profile = await getProfile(user.uid);
+  showApp();
+  await loadReferenceData();
+  await route();
+}
+
+async function route() {
+  state.page = (location.hash || "#resumen").slice(1);
+  if (state.page === "dashboard") state.page = "resumen";
+  if (state.page === "personas_lista") state.page = "personas";
+  if (!["resumen", "flujo", "reportes", "perfil", ...Object.keys(FIELDS)].includes(state.page)) state.page = "resumen";
+  document.querySelectorAll("#navigation a").forEach((link) => link.classList.toggle("active", link.dataset.page === state.page));
+  const info = META[state.page] || { title: state.page === "perfil" ? "Mi perfil" : state.page === "flujo" ? "Flujo mensual" : state.page === "reportes" ? "Reportes" : "Tu dinero, en contexto", eye: "PANEL FINANCIERO" };
+  $("#page-title").textContent = info.title;
+  $("#page-eyebrow").textContent = info.eye;
+  $("#add-main").classList.toggle("hidden", !FIELDS[state.page]);
+  state.entityCursor = null;
+  state.entityHasMore = false;
+  if (state.page === "resumen") return renderDashboard();
+  if (state.page === "perfil") return renderProfile();
+  if (["flujo", "reportes"].includes(state.page)) return loadReports(false);
+  if (state.page === "cuentas") return renderAccounts();
+  return loadEntityPage(false);
+}
+
+function pageLoading(message = "Cargando…") {
+  $("#content").innerHTML = `<section class="panel"><p class="empty">${esc(message)}</p></section>`;
+}
+
+async function renderDashboard() {
+  pageLoading();
+  try {
+    const { start, end } = monthBounds(currentMonth());
+    const [totals, recent, accountBalances, budgetPage, goalPage, debtPage] = await Promise.all([
+      monthTotals(state.user.uid, start, end, state.profile.currency || "PEN"),
+      listPage(state.user.uid, "movimientos", { limit: 100, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: state.profile.currency || "PEN" } }),
+      Promise.resolve(state.data.cuentas || []),
+      listPage(state.user.uid, "presupuestos", { limit: 100, orderField: "mes", direction: "desc", equals: { mes: `${currentMonth()}-01`, moneda: state.profile.currency || "PEN" } }),
+      listPage(state.user.uid, "metas", { limit: 4, orderField: "createdAt", direction: "desc" }),
+      listPage(state.user.uid, "deudas", { limit: 100, orderField: "createdAt", direction: "desc" }),
+    ]);
+    const currency = state.profile.currency || "PEN";
+    const income = fromMinorUnits(totals.incomeMinor, currency);
+    const expense = fromMinorUnits(totals.expenseMinor, currency);
+    const balance = income - expense;
+    const activeAccounts = accountBalances.filter((item) => item.estado !== "ARCHIVADA");
+    const accounts = activeAccounts.filter((item) => (item.moneda || "PEN") === currency).reduce((sum, item) => sum + fromMinorUnits(Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0), currency), 0);
+    const rate = income ? Math.round((balance / income) * 100) : 0;
+    const monthExpenses = recent.rows.filter((movement) => movement.tipo === "GASTO");
+    const categoryTotals = monthExpenses.reduce((acc, movement) => {
+      acc[movement.categoria_id] = (acc[movement.categoria_id] || 0) + Number(movement.montoMinor || 0);
+      return acc;
+    }, {});
+    const topCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const debtByCurrency = debtPage.rows.reduce((groups, debt) => {
+      const code = debt.moneda || "PEN";
+      groups[code] = (groups[code] || 0) + Math.max(0, Number(debt.montoTotalMinor || 0) - Number(debt.montoPagadoMinor || 0));
+      return groups;
+    }, {});
+    const budgets = await Promise.all(budgetPage.rows.map(async (budget) => ({
+      ...budget,
+      spentMinor: await categoryExpenseTotal(state.user.uid, budget.categoria_id, start, end, currency),
+    })));
+    const categoryName = (id) => state.data.categorias.find((item) => item.id === id)?.nombre || "Sin categoría";
+    $("#content").innerHTML = `
+      <section class="summary-grid">
+        <article class="hero-card"><div class="hero-head"><div><span class="overline">Posición actual</span><h2>Disponible en tus cuentas</h2></div><span class="date-chip">${esc(currentMonth())}</span></div>
+          <div class="main-balance"><small>${esc(CURRENCY_SYMBOLS[currency] || currency)}</small>${accounts.toLocaleString("es-PE", { minimumFractionDigits: ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2, maximumFractionDigits: ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2 })}</div>
+          <p class="caption">Saldo de ${activeAccounts.filter((item) => (item.moneda || "PEN") === currency).length} cuentas en ${esc(currency)}. Otras monedas se consultan en Cuentas.</p>
+          <div class="cashflow"><div><span>INGRESOS DEL MES</span><strong class="positive">+ ${money(income)}</strong></div><div><span>EGRESOS DEL MES</span><strong class="negative">− ${money(expense)}</strong></div><div><span>BALANCE MENSUAL</span><strong class="${balance >= 0 ? "positive" : "negative"}">${money(balance)}</strong></div></div>
+        </article>
+        <aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income ? `Conservaste el ${rate}% de tus ingresos.` : "Empieza registrando un movimiento."}</h2><p>${balance >= 0 ? "Tu balance mensual es positivo." : "Tus egresos superaron lo ingresado."}</p><div class="stat-card"><span>DEUDA PENDIENTE</span>${Object.entries(debtByCurrency).length ? Object.entries(debtByCurrency).map(([code, amount]) => `<strong>${moneyFromMinor(amount, code)}</strong>`).join("") : `<strong>${money(0, currency)}</strong>`}</div></aside>
+      </section>
+      <section class="dashboard-columns"><article class="panel"><div class="section-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(currentMonth())} · hasta 100 registros para el resumen</p></div><a class="link-button" href="#movimientos">Ver movimientos</a></div>${recent.rows.slice(0, 6).map((item) => `<div class="transaction-row"><span class="transaction-icon">${item.tipo === "INGRESO" ? "↗" : "↘"}</span><span class="transaction-info"><strong>${esc(item.descripcion || categoryName(item.categoria_id))}</strong><small>${esc(item.fecha)} · ${esc(categoryName(item.categoria_id))}</small></span><strong class="amount ${item.tipo === "INGRESO" ? "positive" : "negative"}">${item.tipo === "INGRESO" ? "+" : "−"}${moneyFromMinor(item.montoMinor, item.moneda)}</strong></div>`).join("") || `<p class="empty">Aún no tienes movimientos este mes.</p>`}</article>
+        <article class="panel"><div class="section-head"><div><h2>Gastos por categoría</h2><p class="caption">Este mes, en tus registros recientes</p></div></div>${topCategories.map(([id, amount]) => `<div class="category-row"><div><span>${esc(categoryName(id))}</span><strong>${moneyFromMinor(amount)}</strong></div><progress max="${Math.max(...topCategories.map(([, total]) => total), 1)}" value="${amount}"></progress></div>`).join("") || `<p class="empty">Registra gastos para ver el análisis.</p>`}</article></section>
+      ${budgets.length ? `<section class="panel"><div class="section-head"><div><h2>Presupuestos del mes</h2></div><a class="link-button" href="#presupuestos">Gestionar</a></div>${budgets.map((item) => `<div class="category-row"><div><span>${esc(categoryName(item.categoria_id))}</span><strong>${moneyFromMinor(item.spentMinor)} / ${moneyFromMinor(item.limiteMinor)}</strong></div><progress max="${Math.max(item.limiteMinor, 1)}" value="${Math.min(item.spentMinor, item.limiteMinor)}"></progress></div>`).join("")}</section>` : ""}
+      ${goalPage.rows.length ? `<section class="panel"><div class="section-head"><h2>Metas de ahorro</h2><a class="link-button" href="#metas">Ver metas</a></div>${goalPage.rows.map((goal) => `<div class="category-row"><div><span>${esc(goal.nombre)}</span><strong>${money(goal.monto_actual, goal.moneda)} / ${money(goal.monto_objetivo, goal.moneda)}</strong></div><progress max="${Math.max(Number(goal.monto_objetivo), 1)}" value="${Math.min(Number(goal.monto_actual), Number(goal.monto_objetivo))}"></progress></div>`).join("")}</section>` : ""}
+      ${recent.hasMore ? `<p class="caption">El resumen usa agregados completos para ingresos y egresos. La lista y el gráfico muestran hasta 100 movimientos del mes.</p>` : ""}`;
+  } catch (error) { showDataError(error); }
+}
+
+async function loadEntityPage(append) {
+  const entity = state.page;
+  if (!FIELDS[entity]) return;
+  if (!append) pageLoading();
+  try {
+    const options = { limit: PAGE_SIZE, cursor: append ? state.entityCursor : null, orderField: entity === "movimientos" || entity === "transferencias" || entity === "pagosTarjeta" ? "fecha" : "createdAt", direction: "desc", equals: { ...(state.filter.equals || {}), ...(entity === "movimientos" && state.movementAccountFilter ? { cuenta_id: state.movementAccountFilter } : {}) }, startDate: state.filter.startDate, endDate: state.filter.endDate };
+    const result = await listPage(state.user.uid, entity, options);
+    const old = append ? (state.data[entity] || []) : [];
+    state.data[entity] = [...old, ...result.rows];
+    state.entityCursor = result.cursor;
+    state.entityHasMore = result.hasMore;
+    renderEntity(entity);
+  } catch (error) { showDataError(error); }
+}
+
+function renderAccounts() {
+  const currency = state.profile.currency || "PEN";
+  const all = (state.data.cuentas || []).filter((item) => item.estado !== "ARCHIVADA");
+  const active = all.filter((item) => item.estado !== "INACTIVA");
+  const filters = state.accountFilters;
+  const query = (filters.q || "").trim().toLocaleLowerCase("es-PE");
+  const rows = all.filter((item) => (!query || `${item.nombre} ${relationLabel("propietario_id", item.propietario_id)} ${relationLabel("institucion_id", item.institucion_id)}`.toLocaleLowerCase("es-PE").includes(query))
+    && (!filters.tipo || item.tipo === filters.tipo) && (!filters.estado || item.estado === filters.estado)
+    && (!filters.moneda || item.moneda === filters.moneda));
+  const totals = active.reduce((group, item) => {
+    const code = item.moneda || "PEN";
+    group[code] = (group[code] || 0) + Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0);
+    return group;
+  }, {});
+  const cards = rows.map((item) => `<article class="account-card"><span class="account-icon">${esc((item.nombre || "C")[0].toUpperCase())}</span><div class="account-main"><strong>${esc(item.nombre)}</strong><small>${esc(optionLabel(item.tipo))} · ${esc(relationLabel("propietario_id", item.propietario_id))}${item.institucion_id ? ` · ${esc(relationLabel("institucion_id", item.institucion_id))}` : ""}</small><span class="badge">${esc(optionLabel(item.estado || "ACTIVA"))}</span></div><div class="account-balance"><strong>${moneyFromMinor(item.saldoActualMinor ?? item.saldoInicialMinor, item.moneda)}</strong><small>${esc(item.moneda || "PEN")}</small></div><div class="account-actions"><button type="button" data-account-movements="${esc(item.id)}">Movimientos</button><button type="button" data-edit="cuentas" data-id="${esc(item.id)}">Editar</button><button type="button" class="danger" data-delete="cuentas" data-id="${esc(item.id)}">Eliminar</button></div></article>`).join("");
+  const summary = Object.entries(totals).map(([code, value]) => `<article><span>Saldo total · ${esc(code)}</span><strong>${moneyFromMinor(value, code)}</strong><small>${active.filter((item) => (item.moneda || "PEN") === code).length} cuentas activas</small></article>`).join("");
+  const clearHistory = state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : "";
+  $("#content").innerHTML = `<section class="account-summary">${summary || `<article><span>Saldo total</span><strong>${money(0, currency)}</strong><small>Aún no tienes cuentas</small></article>`}</section><form class="account-filters panel" data-account-filter-form><input name="q" type="search" placeholder="Buscar cuenta, titular o institución" value="${esc(filters.q || "")}"><select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoCuenta.map((type) => `<option value="${type}" ${filters.tipo === type ? "selected" : ""}>${esc(optionLabel(type))}</option>`).join("")}</select><select name="moneda"><option value="">Todas las monedas</option>${OPTIONS.moneda.map((code) => `<option value="${code}" ${filters.moneda === code ? "selected" : ""}>${esc(optionLabel(code))}</option>`).join("")}</select><select name="estado"><option value="">Todos los estados</option><option value="ACTIVA" ${filters.estado === "ACTIVA" ? "selected" : ""}>Activa</option><option value="INACTIVA" ${filters.estado === "INACTIVA" ? "selected" : ""}>Inactiva</option></select><button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-account-clear>Limpiar</button>${clearHistory}</form><section class="account-list">${cards || `<p class="panel empty">No hay cuentas que coincidan con estos filtros.</p>`}</section>`;
+}
+
+function showDataError(error) {
+  console.error(error);
+  const needsIndex = error?.code === "failed-precondition";
+  const indexUrl = needsIndex ? error?.message?.match(/https:\/\/console\.firebase\.google\.com\/\S+/)?.[0]?.replace(/[),.;]+$/, "") : null;
+  const message = error?.code === "permission-denied" ? "Firestore bloqueó la solicitud. Revisa que firestore.rules esté publicado." : needsIndex ? "Firestore devolvió una condición previa fallida. Revisa el índice requerido y espera a que cualquier índice nuevo termine de crearse." : authError(error);
+  const diagnostic = needsIndex ? indexUrl
+    ? `<p><a class="link-button" href="${esc(indexUrl)}" target="_blank" rel="noopener noreferrer">Abrir índice requerido en Firebase Console</a></p>`
+    : `<details><summary>Detalle técnico</summary><code>${esc(error?.message || "Sin detalle proporcionado")}</code></details>` : "";
+  $("#content").innerHTML = `<section class="panel"><p class="empty">${esc(message)}</p>${diagnostic}</section>`;
+}
+
+function relationLabel(field, id) {
+  if (!id) return "—";
+  const source = field === "categoria_id" ? "categorias"
+    : ["cuenta_id", "cuenta_origen_id", "cuenta_destino_id"].includes(field) ? "cuentas"
+      : field === "tarjeta_id" ? "tarjetas"
+        : field === "persona_id" ? "personas"
+          : field === "propietario_id" ? "propietarios" : "instituciones";
+  const row = (state.data[source] || []).find((item) => item.id === id);
+  return row?.nombre || row?.email || "—";
+}
+
+function cellValue(entity, key, row) {
+  const value = row[key];
+  if (key === "comprobante") return row.attachment?.path ? firebaseStorageAvailable ? `<button class="link-button" data-open-receipt="${esc(row.attachment.path)}">${esc(row.attachment.name || "Abrir")}</button>` : `<span class="caption">No disponible (Storage desactivado)</span>` : "—";
+  if (["categoria_id", "cuenta_id", "tarjeta_id", "persona_id", "propietario_id", "institucion_id", "cuenta_origen_id", "cuenta_destino_id"].includes(key)) return esc(relationLabel(key, value));
+  if (["monto", "limite", "saldo_actual", "linea_credito", "utilizado", "monto_objetivo", "monto_actual", "monto_total", "monto_pagado", "monto_estimado"].includes(key)) return `<strong>${esc(money(value, row.moneda || "PEN"))}</strong>`;
+  if (key === "estado" || key === "tipo" || key === "medio_pago") return `<span class="badge ${esc(String(value || "").toLowerCase())}">${esc(optionLabel(value))}</span>`;
+  if (key === "mes" && String(value).length > 7) return esc(String(value).slice(0, 7));
+  return esc(value || "—");
+}
+
+function renderEntity(entity) {
+  const meta = META[entity];
+  const rows = state.data[entity] || [];
+  const fields = LIST_FIELDS[entity] || [];
+  const filterable = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
+  const filters = filterable ? `<form class="filters panel" data-filter-form><input name="startDate" type="date" aria-label="Desde" value="${esc(state.filter.startDate || "")}"><input name="endDate" type="date" aria-label="Hasta" value="${esc(state.filter.endDate || "")}">${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
+  const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
+  const visibleRows = entity === "instituciones" ? institutionRows : rows;
+  const columns = fields.map((key) => `<th>${esc(fieldLabel(key))}</th>`).join("");
+  const body = visibleRows.length ? visibleRows.map((row) => `<tr>${fields.map((key) => `<td>${cellValue(entity, key, row)}</td>`).join("")}<td class="actions">${row.base ? `<span class="caption">Catálogo</span>` : `<button type="button" data-edit="${entity}" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="${entity}" data-id="${esc(row.id)}">Eliminar</button>`}</td></tr>`).join("") : `<tr><td colspan="${fields.length + 1}" class="empty">Todavía no hay ${esc(meta.title.toLowerCase())}.</td></tr>`;
+  $("#content").innerHTML = `${filters}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(meta.title)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
+}
+
+async function applyFilters(form) {
+  const values = Object.fromEntries(new FormData(form).entries());
+  if (form.matches("[data-account-filter-form]")) {
+    state.accountFilters = values;
+    return renderAccounts();
+  }
+  state.filter = { startDate: values.startDate, endDate: values.endDate, equals: values.tipo ? { tipo: values.tipo } : {} };
+  state.data[state.page] = [];
+  state.entityCursor = null;
+  await loadEntityPage(false);
+}
+
+async function loadReports(append) {
+  pageLoading();
+  const current = currentMonth();
+  const start = `${shiftMonth(current, -11)}-01`;
+  const end = monthBounds(current).end;
+  try {
+    const result = await listPage(state.user.uid, "movimientos", { limit: REPORT_LIMIT, cursor: append ? state.reportCursor : null, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: state.profile.currency || "PEN" } });
+    state.reportRows = append ? [...state.reportRows, ...result.rows] : result.rows;
+    state.reportCursor = result.cursor;
+    state.reportHasMore = result.hasMore;
+    renderReports();
+  } catch (error) { showDataError(error); }
+}
+
+function renderReports() {
+  const currency = state.profile.currency || "PEN";
+  const grouped = aggregateByMonth(state.reportRows);
+  const rows = Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a));
+  const totals = rows.reduce((result, [, row]) => ({ incomeMinor: result.incomeMinor + row.incomeMinor, expenseMinor: result.expenseMinor + row.expenseMinor }), { incomeMinor: 0, expenseMinor: 0 });
+  const html = rows.length ? rows.map(([month, row]) => `<tr><td><strong>${esc(month)}</strong></td><td class="positive">${moneyFromMinor(row.incomeMinor, currency)}</td><td class="negative">${moneyFromMinor(row.expenseMinor, currency)}</td><td><strong>${moneyFromMinor(row.incomeMinor - row.expenseMinor, currency)}</strong></td></tr>`).join("") : `<tr><td colspan="4" class="empty">Registra movimientos para generar el análisis.</td></tr>`;
+  $("#content").innerHTML = `<section class="stats"><article class="stat-card"><span>INGRESOS · ÚLTIMOS 12 MESES</span><strong class="positive">${moneyFromMinor(totals.incomeMinor, currency)}</strong></article><article class="stat-card"><span>EGRESOS · ÚLTIMOS 12 MESES</span><strong class="negative">${moneyFromMinor(totals.expenseMinor, currency)}</strong></article><article class="stat-card"><span>BALANCE DEL MES</span><strong>${moneyFromMinor((grouped[currentMonth()]?.incomeMinor || 0) - (grouped[currentMonth()]?.expenseMinor || 0), currency)}</strong></article></section><section class="panel table-panel"><div class="section-head"><div><h2>Flujo mensual</h2><p class="caption">${esc(shiftMonth(currentMonth(), -11))} a ${esc(currentMonth())} · ${state.reportRows.length} movimientos consultados en ${esc(currency)}</p></div></div><div class="table-scroll"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Egresos</th><th>Balance</th></tr></thead><tbody>${html}</tbody></table></div></section>${state.reportHasMore ? `<div class="load-more"><button class="btn secondary" data-load-report-more>Cargar más</button></div>` : ""}`;
+}
+
+function renderProfile() {
+  $("#content").innerHTML = `<section class="panel profile-panel"><div class="section-head"><div><h2>Perfil</h2><p class="caption">Actualiza los datos de tu cuenta.</p></div></div><form data-profile-form class="form-grid"><label>Nombre<input name="displayName" required maxlength="120" value="${esc(state.profile.displayName || state.user.displayName || "")}"></label><label>Correo<input name="email" type="email" required value="${esc(state.user.email || "")}"></label><label>Moneda principal<select name="currency">${OPTIONS.moneda.map((currency) => `<option value="${currency}" ${(state.profile.currency || "PEN") === currency ? "selected" : ""}>${esc(optionLabel(currency))}</option>`).join("")}</select></label><label>Contraseña actual<input name="currentPassword" type="password" autocomplete="current-password" placeholder="Necesaria para cambiar correo o contraseña"></label><label>Nueva contraseña<input name="newPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Déjala vacía si no vas a cambiarla"></label><div class="wide"><button class="btn primary" type="submit">Guardar perfil</button><button class="btn secondary" type="button" data-reset-password>Enviar enlace para restablecer contraseña</button></div></form></section>`;
+}
+
+async function saveProfile(form) {
+  const values = Object.fromEntries(new FormData(form).entries());
+  const changedEmail = values.email.trim() !== state.user.email;
+  const changedPassword = Boolean(values.newPassword);
+  try {
+    if ((changedEmail || changedPassword) && !values.currentPassword) throw new Error("Escribe tu contraseña actual para confirmar el cambio de seguridad.");
+    if (changedEmail || changedPassword) {
+      const credential = services.authSdk.EmailAuthProvider.credential(state.user.email, values.currentPassword);
+      await services.authSdk.reauthenticateWithCredential(state.user, credential);
+    }
+    if (changedEmail) await services.authSdk.verifyBeforeUpdateEmail(state.user, values.email.trim());
+    if (changedPassword) await services.authSdk.updatePassword(state.user, values.newPassword);
+    await services.authSdk.updateProfile(state.user, { displayName: values.displayName.trim() });
+    await updateUserProfile(state.user, values);
+    state.profile = await getProfile(state.user.uid);
+    showApp();
+    toast(changedEmail ? "Revisa tu correo para confirmar la nueva dirección." : "Perfil actualizado.");
+    await renderProfile();
+  } catch (error) { toast(authError(error)); }
+}
+
+function fieldLabel(field) {
+  return ({ categoria_id: "Categoría", cuenta_id: "Cuenta", tarjeta_id: "Tarjeta", persona_id: "Persona", propietario_id: "Titular", institucion_id: "Institución", cuenta_origen_id: "Origen", cuenta_destino_id: "Destino", saldo_actual: "Saldo actual", linea_credito: "Línea", utilizado: "Utilizado", monto_objetivo: "Objetivo", monto_actual: "Ahorrado", monto_total: "Total", monto_pagado: "Pagado", monto_estimado: "Estimado", limite: "Límite", mes: "Mes", proxima_fecha: "Próximo pago", fecha_vencimiento: "Vencimiento", fecha_objetivo: "Fecha objetivo", numero_cuotas: "Cuotas", fecha_nacimiento: "Nacimiento", relacion: "Relación", medio_pago: "Forma de pago", origen_movimiento: "Origen", comprobante: "Comprobante" })[field] || field.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function optionLabel(value = "") {
+  const labels = { PEN: "PEN · Sol peruano", USD: "USD · Dólar estadounidense", EUR: "EUR · Euro", GBP: "GBP · Libra esterlina", JPY: "JPY · Yen", CLP: "CLP · Peso chileno", COP: "COP · Peso colombiano", MXN: "MXN · Peso mexicano", BRL: "BRL · Real", PERSONA: "Persona", EMPRESA: "Empresa", COMPARTIDA: "Compartida", INGRESO: "Ingreso", GASTO: "Gasto", CREDITO: "Crédito", DEBITO: "Débito", PENDIENTE: "Pendiente", PAGADA: "Pagada", ACTIVA: "Activa", INACTIVA: "Inactiva", ARCHIVADA: "Archivada", ACTIVO: "Activo", PASIVO: "Pasivo", TITULAR: "Titular", PAREJA: "Pareja", HIJO: "Hijo/a", FAMILIAR: "Familiar", EFECTIVO: "Efectivo", BANCO: "Banco", YAPE: "Yape", PLIN: "Plin", TARJETA_DEBITO: "Tarjeta de débito", TARJETA_CREDITO: "Tarjeta de crédito", CUENTA_BANCARIA: "Cuenta bancaria", BILLETERA_DIGITAL: "Billetera digital", COOPERATIVA: "Cooperativa", FINANCIERA: "Financiera", OTRA: "Otra", OTRO: "Otro", SEMANAL: "Semanal", QUINCENAL: "Quincenal", MENSUAL: "Mensual", ANUAL: "Anual" };
+  return labels[value] || String(value).toLowerCase().replaceAll("_", " ");
+}
+
+function getOptions(key, field) {
+  if (OPTIONS[key]) return OPTIONS[key];
+  if (key === "estadoCuenta") return ["ACTIVA", "INACTIVA", "ARCHIVADA"];
+  if (key === "cuentas") return (state.data.cuentas || []).filter((row) => row.estado !== "ARCHIVADA");
+  if (key === "tarjetas") return state.data.tarjetas || [];
+  if (key === "personas") return state.data.personas || [];
+  if (key === "propietarios") return (state.data.propietarios || []).filter((row) => row.estado !== "INACTIVO");
+  if (key === "instituciones") return state.data.instituciones || BASE_INSTITUTIONS;
+  if (key === "categorias") return (state.data.categorias || []).filter((row) => field !== "presupuestos" || row.tipo === "GASTO");
+  return [];
+}
+
+function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
+  const optionalAttr = optional ? "" : "required";
+  if (type === "select") {
+    const options = getOptions(optionKey, entity);
+    return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}><option value="">Selecciona</option>${options.map((item) => {
+      const key = typeof item === "string" ? item : item.id;
+      const title = typeof item === "string" ? optionLabel(item) : `${item.nombre}${item.tipo ? ` · ${optionLabel(item.tipo)}` : ""}`;
+      return `<option value="${esc(key)}" ${String(key) === String(value) ? "selected" : ""}>${esc(title)}</option>`;
+    }).join("")}</select></label>`;
+  }
+  if (type === "relation") {
+    const options = getOptions(optionKey, entity);
+    const blank = optional ? `<option value="">Sin asignar</option>` : `<option value="">Selecciona</option>`;
+    return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}>${blank}${options.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === String(value) ? "selected" : ""}>${esc(item.nombre || item.email || "")}${item.tipo ? ` · ${esc(optionLabel(item.tipo))}` : ""}</option>`).join("")}</select></label>`;
+  }
+  if (type === "textarea") return `<label class="wide" data-field="${field}">${esc(label)}<textarea name="${field}" ${optionalAttr}>${esc(value || "")}</textarea></label>`;
+  let inputValue = value ?? "";
+  if (type === "month" && inputValue) inputValue = String(inputValue).slice(0, 7);
+  if (["date", "month"].includes(type) && !inputValue) inputValue = type === "month" ? currentMonth() : todayISO();
+  const step = type === "money" ? 'step="0.01" min="0.01" inputmode="decimal"' : type === "number" ? 'step="1" min="0" inputmode="numeric"' : "";
+  return `<label data-field="${field}">${esc(label)}<input name="${field}" type="${type === "money" ? "number" : type}" ${step} value="${esc(inputValue)}" ${optionalAttr}></label>`;
+}
+
+function openForm(entity, row = null, preset = {}) {
+  if (!FIELDS[entity]) return;
+  state.editing = { entity, id: row?.id || null, row };
+  $("#dialog-title").textContent = `${row ? "Editar" : "Nuevo"} ${META[entity].singular}`;
+  const defaults = {
+    moneda: state.profile.currency || "PEN", fecha: todayISO(), fecha_saldo_inicial: todayISO(), mes: currentMonth(),
+    saldo_inicial: 0, saldo_inicial_usado: 0, monto_pagado: 0, monto_actual: 0, numero_cuotas: 1,
+    tipo: entity === "propietarios" ? "PERSONA" : entity === "tarjetas" ? "CREDITO" : "GASTO",
+    medio_pago: "CUENTA_BANCARIA", estado: "ACTIVA", estado_deuda: "PENDIENTE",
+  };
+  const fields = FIELDS[entity].map(([name, label, type, options, optional]) => {
+    let value = row?.[name] ?? preset[name] ?? defaults[name] ?? "";
+    if (name === "institucion_id" && row?.institucion_id?.startsWith("base-")) value = row.institucion_id;
+    return formFieldHTML(name, label, type, options, optional, value, entity);
+  }).join("");
+  const attachment = entity === "movimientos" ? firebaseStorageAvailable ? `<label class="wide">Comprobante (imagen o PDF, máximo 10 MB)<input id="receipt-file" name="comprobanteFile" type="file" accept="image/*,application/pdf"><small>${row?.attachment?.name ? `Actual: ${esc(row.attachment.name)}. Al elegir otro se reemplazará.` : "El archivo será privado y accesible solo desde tu cuenta."}</small></label>${row?.attachment?.path ? `<label class="wide"><span><input name="removeAttachment" type="checkbox" value="1"> Quitar comprobante actual</span></label>` : ""}` : `<p class="field-help wide">Comprobantes temporalmente no disponibles: Firebase Storage aún no está habilitado. Puedes guardar el movimiento sin adjunto.</p>` : "";
+  $("#form-fields").innerHTML = `<div id="flow-guidance" class="flow-guidance wide"></div>${fields}${attachment}`;
   updateFormFlow();
-  $('#record-dialog').showModal();
+  $("#record-dialog").showModal();
 }
-function optionLabel(value){return ({PEN:'PEN - Sol peruano',USD:'USD - Dólar estadounidense',EUR:'EUR - Euro',GBP:'GBP - Libra esterlina',JPY:'JPY - Yen japonés',CLP:'CLP - Peso chileno',COP:'COP - Peso colombiano',MXN:'MXN - Peso mexicano',BRL:'BRL - Real brasileño',PERSONA:'Persona',EMPRESA:'Empresa',COMPARTIDA:'Compartida',ACTIVO:'Activo',PASIVO:'Pasivo',ACTIVA:'Activa',INACTIVA:'Inactiva',ARCHIVADA:'Archivada',INACTIVO:'Inactivo',EFECTIVO:'Efectivo',BANCO:'Banco',YAPE:'Yape',PLIN:'Plin',TARJETA_DE_DEBITO:'Tarjeta de débito',TARJETA_DE_CREDITO:'Tarjeta de crédito',AHORRO:'Ahorro',BILLETERA_DIGITAL:'Billetera digital',INVERSION:'Inversión',PRESTAMO:'Préstamo',CREDITO:'Crédito',CAJA:'Caja',OTRO:'Otro',DEBITO:'Débito',TARJETA_CREDITO:'Tarjeta de crédito',TARJETA_DEBITO:'Tarjeta de débito',CUENTA_BANCARIA:'Cuenta bancaria',COOPERATIVA:'Cooperativa',FINANCIERA:'Financiera',OTRA:'Otra'}[value]||String(value).toLowerCase().replaceAll('_',' '))}
-function fieldHTML(name,label,type,opt,value){
-  let control;
-  const optional=(state.editing.entity==='movimientos'&&['descripcion','notas'].includes(name))||(state.editing.entity==='tarjetas'&&['saldo_inicial_usado'].includes(name));
-  if(type==='month'&&String(value).length>7)value=String(value).slice(0,7);
-  if(type==='select')control=`<select name="${name}" ${optional?'':'required'}><option value="">Selecciona</option>${opt.map(x=>`<option value="${x}" ${x==value?'selected':''}>${esc(optionLabel(x))}</option>`).join('')}</select>`;
-  else if(type==='relation'){
-    let list=state.data[opt]||[];
-    if(opt==='cuentas')list=list.filter(x=>x.estado!=='ARCHIVADA');
-    if(opt==='propietarios')list=list.filter(x=>x.estado!=='INACTIVO');
-    if(opt==='instituciones')list=list.filter(x=>x.estado!=='INACTIVO');
-    if(name==='categoria_id'&&state.editing.entity==='presupuestos')list=list.filter(x=>x.tipo==='GASTO');
-    control=`<select name="${name}"><option value="">${name==='propietario_id'?'Seleccionar titular':'Sin asignar'}</option>${list.map(x=>`<option value="${x.id}" ${x.id==value?'selected':''} ${name==='tarjeta_id'?`data-card-type="${x.tipo||'CREDITO'}"`:''}>${esc(x.nombre)}${name==='tarjeta_id'?` · ${esc(x.entidad)} (${esc(optionLabel(x.tipo||'CREDITO'))})`:''}</option>`).join('')}${name==='propietario_id'&&state.editing.entity==='cuentas'?'<option value="__new__">＋ Agregar nuevo titular</option>':''}</select>`;
-  }else if(type==='textarea')control=`<textarea name="${name}">${esc(value)}</textarea>`;
-  else control=`<input name="${name}" type="${type}" value="${esc(value||(type==='date'?todayISO():''))}" ${type==='number'?'step="0.01" min="0" inputmode="decimal"':''} ${state.editing.entity==='cuentas'&&name==='nombre'?'list="account-name-suggestions" maxlength="100"':''} ${optional?'':'required'}>`;
-  const help=state.editing.entity==='cuentas'&&name==='nombre'?'Ejemplo: Cuenta sueldo, Yape personal o Tarjeta BCP.':'';
-  return `<label data-field="${name}" class="${type==='textarea'?'wide':''}">${label}${optional?' <span class="optional-label">Opcional</span>':''}${control}${help?`<small class="field-help">${help}</small>`:''}</label>`;
+
+function updateFormFlow(target) {
+  const form = $("#record-form");
+  const entity = state.editing?.entity;
+  const hide = (name, shouldHide) => {
+    const field = form.querySelector(`[data-field="${name}"]`);
+    if (!field) return;
+    field.hidden = shouldHide;
+    const control = field.querySelector("input,select,textarea");
+    if (control) control.disabled = shouldHide;
+  };
+  const guidance = $("#flow-guidance");
+  if (entity === "movimientos") {
+    const method = form.elements.medio_pago?.value || "";
+    const credit = method === "TARJETA_CREDITO";
+    const debit = method === "TARJETA_DEBITO";
+    hide("cuenta_id", credit || debit);
+    hide("tarjeta_id", !credit && !debit);
+    hide("numero_cuotas", !credit);
+    if (target?.name === "medio_pago") {
+      form.elements.tarjeta_id.value = "";
+      form.elements.cuenta_id.value = "";
+    }
+    guidance.textContent = credit ? "La compra aumenta la deuda de la tarjeta; registra el pago como una operación aparte." : debit ? "El gasto se descuenta de la cuenta vinculada a la tarjeta de débito." : "Selecciona la cuenta desde donde sale o ingresa el dinero.";
+  } else if (entity === "tarjetas") {
+    const debit = form.elements.tipo?.value === "DEBITO";
+    hide("cuenta_id", !debit);
+    ["linea_credito", "saldo_inicial_usado", "dia_cierre", "dia_pago", "tasa_interes_anual"].forEach((field) => hide(field, debit));
+    guidance.textContent = debit ? "Vincula la cuenta cuyo saldo se descontará al usar esta tarjeta." : "Registra límite, saldo utilizado y ciclo de pago de la tarjeta.";
+  } else if (entity === "cuentas") {
+    const type = form.elements.tipo?.value || "";
+    const requiresInstitution = ["BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "BILLETERA_DIGITAL"].includes(type);
+    hide("institucion_id", !requiresInstitution);
+    guidance.textContent = type ? `${optionLabel(type)} se organizará como ${ACCOUNT_NATURE[type] || "ACTIVO"}.` : "Asigna un titular y selecciona el tipo de cuenta.";
+  } else if (guidance) guidance.hidden = true;
 }
-function updateFormFlow(){
-  const form=$('#record-form'),entity=state.editing?.entity;
-  const setField=(name,visible,required=false)=>{const label=form.querySelector(`[data-field="${name}"]`);if(!label)return;label.hidden=!visible;const control=label.querySelector('input,select,textarea');control.disabled=!visible;control.required=visible&&required};
-  const guidance=$('#flow-guidance');
-  if(entity==='movimientos'){
-    const payment=form.elements.medio_pago?.value,isCredit=payment==='TARJETA_CREDITO',isDebit=payment==='TARJETA_DEBITO',usesCard=isCredit||isDebit;
-    setField('cuenta_id',!usesCard,!usesCard);setField('tarjeta_id',usesCard,usesCard);setField('numero_cuotas',isCredit,isCredit);
-    const cardSelect=form.elements.tarjeta_id;
-    if(cardSelect)Array.from(cardSelect.options).forEach(option=>{const type=option.dataset.cardType,allowed=!type||(isCredit&&type==='CREDITO')||(isDebit&&type==='DEBITO');option.hidden=!allowed;option.disabled=!allowed;if(option.selected&&!allowed)cardSelect.value=''});
-    guidance.textContent=isCredit?'Compra a crédito: el monto aumentará la deuda de la tarjeta y no descontará ninguna cuenta hasta que registres su pago.':isDebit?'Compra con débito: el monto se descontará automáticamente de la cuenta vinculada a la tarjeta.':'Movimiento directo: selecciona la cuenta de donde sale el dinero o donde ingresa.';
-  }else if(entity==='cuentas'){
-    const type=form.elements.tipo?.value||'',requiresInstitution=['BANCO','YAPE','PLIN','TARJETA_DE_DEBITO','TARJETA_DE_CREDITO','BILLETERA_DIGITAL'].includes(type),nature=ACCOUNT_NATURE[type]||'ACTIVO';
-    setField('propietario_id',true,true);setField('institucion_id',requiresInstitution,requiresInstitution);
-    const institutionSelect=form.elements.institucion_id;if(institutionSelect&&requiresInstitution&&!institutionSelect.value&&['YAPE','PLIN'].includes(type)){const match=(state.data.instituciones||[]).find(x=>x.estado!=='INACTIVO'&&x.nombre.trim().toUpperCase()===type);if(match)institutionSelect.value=match.id}const chosenInstitution=institution(institutionSelect?.value);
-    const suggestions=$('#account-name-suggestions');if(suggestions)suggestions.innerHTML=(ACCOUNT_SUGGESTIONS[type]||[]).map(x=>`<option value="${esc(x)}"></option>`).join('');
-    guidance.textContent=type?`${optionLabel(type)} se organizará automáticamente como ${nature==='PASIVO'?'deuda':'dinero disponible'}.${requiresInstitution?` Institución: ${chosenInstitution?.nombre||'selecciona una opción'}.`:''}`:'Selecciona el titular y el tipo; el resto del flujo se ajustará automáticamente.';
-  }else if(entity==='tarjetas'){
-    const isDebit=form.elements.tipo?.value==='DEBITO';
-    setField('cuenta_id',isDebit,isDebit);['linea_credito','dia_cierre','dia_pago'].forEach(name=>setField(name,!isDebit,!isDebit));setField('saldo_inicial_usado',!isDebit,false);
-    guidance.textContent=isDebit?'Tarjeta de débito: vincúlala a la cuenta bancaria cuyo saldo se descontará en cada compra.':'Tarjeta de crédito: las compras aumentarán su deuda y el dinero saldrá de una cuenta recién cuando registres el pago.';
-  }else guidance.hidden=true;
+
+function readForm(entity, row) {
+  const formData = new FormData($("#record-form"));
+  const value = {};
+  for (const [name, label, type] of FIELDS[entity]) {
+    const raw = formData.get(name);
+    if (type === "number") value[name] = raw === "" ? null : Number(raw);
+    else if (type === "money") value[name] = raw === "" ? 0 : Number(raw);
+    else if (type === "relation") value[name] = raw || null;
+    else value[name] = typeof raw === "string" ? raw.trim() : raw;
+  }
+  if (row?.createdAt) value.createdAt = row.createdAt;
+  if (row?.attachment) value.attachment = row.attachment;
+  if (entity === "presupuestos") value.mes = `${value.mes}-01`;
+  return value;
 }
-async function saveForm(e){
-  e.preventDefault();
-  if(e.submitter?.value==='cancel'){$('#record-dialog').close();return}
-  const saveButton=$('#save-record'),previousLabel=saveButton.textContent;
-  saveButton.disabled=true;saveButton.classList.add('is-loading');saveButton.setAttribute('aria-busy','true');saveButton.textContent='Guardando…';
-  try{
-    const {entity,id}=state.editing,obj=Object.fromEntries(new FormData($('#record-form')).entries());
-    for(const [n,,t] of SCHEMAS[entity])if(t==='number'&&Object.hasOwn(obj,n)){const numeric=Number(obj[n]||0);obj[n]=MONEY_FIELDS.has(n)?numeric.toFixed(2):numeric}
-    for(const [n,,t] of SCHEMAS[entity])if(t==='relation'&&obj[n]==='')obj[n]=null;
-    if(['propietarios','instituciones','cuentas'].includes(entity)&&obj.nombre)obj.nombre=obj.nombre.trim().replace(/\s+/g,' ');
-    if(entity==='propietarios'){
-      obj.estado='ACTIVO';
-      if(!obj.nombre){toast('El nombre del titular es obligatorio.');return}
-      if(obj.nombre.length>80){toast('El nombre no puede superar 80 caracteres.');return}
-      if((state.data.propietarios||[]).some(x=>x.id!==id&&x.nombre.trim().toLowerCase()===obj.nombre.toLowerCase())){toast('Ya existe un titular con ese nombre.');return}
+
+function validateRecord(entity, value, row) {
+  if (["personas", "propietarios", "instituciones", "cuentas", "tarjetas", "categorias", "metas", "recurrentes"].includes(entity) && !value.nombre) throw new Error("Escribe un nombre para este registro.");
+  if (entity === "instituciones" && !value.pais) value.pais = "PE";
+  const moneyByEntity = { cuentas: ["saldo_inicial"], tarjetas: ["linea_credito", "saldo_inicial_usado"], presupuestos: ["limite"], metas: ["monto_objetivo", "monto_actual"], deudas: ["monto_total", "monto_pagado"], recurrentes: ["monto_estimado"] };
+  for (const field of moneyByEntity[entity] || []) if (value[field] != null && (!Number.isFinite(value[field]) || value[field] < 0)) throw new Error("Los importes deben ser cero o positivos.");
+  if (entity === "movimientos") {
+    const credit = value.medio_pago === "TARJETA_CREDITO";
+    const debit = value.medio_pago === "TARJETA_DEBITO";
+    if (value.monto <= 0) throw new Error("El importe debe ser mayor que cero.");
+    if (!value.categoria_id || !state.data.categorias.some((item) => item.id === value.categoria_id)) throw new Error("Selecciona una categoría válida.");
+    if (state.data.categorias.find((item) => item.id === value.categoria_id)?.tipo !== value.tipo) throw new Error("La categoría debe corresponder al tipo de movimiento.");
+    if ((credit || debit) && value.tipo !== "GASTO") throw new Error("Las tarjetas solo se pueden usar para gastos.");
+    if (credit || debit) {
+      const card = state.data.tarjetas.find((item) => item.id === value.tarjeta_id);
+      if (!card || card.tipo !== (credit ? "CREDITO" : "DEBITO")) throw new Error(`Selecciona una tarjeta de ${credit ? "crédito" : "débito"}.`);
+      if (debit) {
+        if (!card.cuenta_id) throw new Error("La tarjeta de débito necesita una cuenta vinculada.");
+        value.cuenta_id = card.cuenta_id;
+      } else value.cuenta_id = null;
+      if (!credit) value.numero_cuotas = 1;
+    } else if (!value.cuenta_id) throw new Error("Selecciona una cuenta.");
+    if (value.cuenta_id) {
+      const account = state.data.cuentas.find((item) => item.id === value.cuenta_id);
+      if (!account || account.moneda !== value.moneda) throw new Error("La cuenta y el movimiento deben usar la misma moneda.");
     }
-    if(entity==='instituciones'){obj.estado='ACTIVO';if((state.data.instituciones||[]).some(x=>x.id!==id&&x.nombre.trim().toLowerCase()===obj.nombre.toLowerCase())){toast('Ya existe una institución con ese nombre.');return}}
-    if(entity==='cuentas'){
-      if(!obj.propietario_id||!obj.nombre||!obj.tipo||!obj.moneda||!Object.hasOwn(obj,'saldo_inicial')){toast('Completa titular, nombre, tipo, saldo inicial y moneda.');return}
-      if(obj.saldo_inicial<0){toast('Registra el saldo o la deuda inicial como un importe positivo.');return}
-      const needsInstitution=['BANCO','YAPE','PLIN','TARJETA_DE_DEBITO','TARJETA_DE_CREDITO','BILLETERA_DIGITAL'].includes(obj.tipo);if(!needsInstitution)obj.institucion_id=null;
-      if(needsInstitution&&!obj.institucion_id){toast('Selecciona la institución financiera para este tipo de cuenta.');return}
-      const duplicate=(state.data.cuentas||[]).some(x=>x.id!==id&&x.propietario_id===obj.propietario_id&&(x.nombre||'').trim().toLowerCase()===obj.nombre.toLowerCase()&&(x.institucion_id||null)===(obj.institucion_id||null)&&(x.moneda||'PEN')===obj.moneda);
-      if(duplicate){toast('Ya existe una cuenta con el mismo titular, alias, institución y moneda.');return}
-      const selectedInstitution=institution(obj.institucion_id),icons={EFECTIVO:'EFECTIVO',BANCO:'BANCO',YAPE:'BILLETERA',PLIN:'BILLETERA',TARJETA_DE_DEBITO:'TARJETA',TARJETA_DE_CREDITO:'TARJETA',AHORRO:'AHORRO',BILLETERA_DIGITAL:'BILLETERA',INVERSION:'INVERSION'};
-      obj.naturaleza=ACCOUNT_NATURE[obj.tipo]||'ACTIVO';obj.estado='ACTIVA';obj.fecha_saldo_inicial=todayISO();obj.color=selectedInstitution?.color||'#315efb';obj.icono=icons[obj.tipo]||'CAJA';
+    if (value.tarjeta_id) {
+      const card = state.data.tarjetas.find((item) => item.id === value.tarjeta_id);
+      if (!card || card.moneda !== value.moneda) throw new Error("La tarjeta y el movimiento deben usar la misma moneda.");
     }
-    if(entity==='tarjetas'){
-      if(obj.tipo==='DEBITO'){
-        if(!obj.cuenta_id){toast('Selecciona la cuenta bancaria vinculada a la tarjeta de débito.');return}
-        obj.linea_credito=null;obj.saldo_inicial_usado=0;obj.dia_cierre=null;obj.dia_pago=null;
-      }else{
-        obj.tipo='CREDITO';obj.cuenta_id=null;
-        if(Number(obj.linea_credito)<=0||!obj.dia_cierre||!obj.dia_pago){toast('Completa la línea de crédito, el cierre y el día de pago.');return}
-      }
+  }
+  if (entity === "transferencias") {
+    if (!value.cuenta_origen_id || !value.cuenta_destino_id || value.cuenta_origen_id === value.cuenta_destino_id) throw new Error("Selecciona dos cuentas distintas.");
+    const from = state.data.cuentas.find((item) => item.id === value.cuenta_origen_id);
+    const to = state.data.cuentas.find((item) => item.id === value.cuenta_destino_id);
+    if (!from || !to || from.moneda !== to.moneda || from.moneda !== value.moneda) throw new Error("Origen, destino e importe deben usar la misma moneda.");
+    if (value.monto <= 0) throw new Error("El importe debe ser mayor que cero.");
+  }
+  if (entity === "pagosTarjeta") {
+    const card = state.data.tarjetas.find((item) => item.id === value.tarjeta_id);
+    const account = state.data.cuentas.find((item) => item.id === value.cuenta_id);
+    if (!card || card.tipo !== "CREDITO") throw new Error("Selecciona una tarjeta de crédito.");
+    if (!account) throw new Error("Selecciona la cuenta de pago.");
+    if (card.moneda !== value.moneda || account.moneda !== value.moneda) throw new Error("Tarjeta, cuenta e importe deben usar la misma moneda.");
+    if (value.monto <= 0) throw new Error("El importe debe ser mayor que cero.");
+  }
+  if (entity === "tarjetas") {
+    if (value.tipo === "DEBITO" && !value.cuenta_id) throw new Error("Vincula una cuenta a la tarjeta de débito.");
+    if (value.tipo === "CREDITO" && (!value.linea_credito || !value.dia_cierre || !value.dia_pago)) throw new Error("Completa la línea de crédito, día de cierre y día de pago.");
+  }
+  if (entity === "deudas" && value.monto_pagado > value.monto_total) throw new Error("El importe pagado no puede superar la deuda total.");
+  if (entity === "metas" && value.monto_actual > value.monto_objetivo) throw new Error("El ahorro actual no puede superar la meta objetivo.");
+  if (entity === "cuentas" && !value.propietario_id) throw new Error("Selecciona un titular.");
+  if (entity === "presupuestos" && value.limite <= 0) throw new Error("El límite debe ser mayor que cero.");
+}
+
+async function saveForm(event) {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") { $("#record-dialog").close(); return; }
+  const { entity, row, id } = state.editing;
+  const button = $("#save-record");
+  button.disabled = true;
+  button.textContent = "Guardando…";
+  let uploaded = null;
+  try {
+    const value = readForm(entity, row);
+    validateRecord(entity, value, row);
+    if (entity === "cuentas") {
+      value.naturaleza = ACCOUNT_NATURE[value.tipo] || "ACTIVO";
+      value.estado ||= "ACTIVA";
+      value.saldo_inicial = Math.max(0, value.saldo_inicial);
+      value.moneda ||= "PEN";
+      if (!id) value.saldo_actual = value.saldo_inicial;
+      if (!FIELDS.cuentas.some(([name]) => name === "institucion_id") || !["BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "BILLETERA_DIGITAL"].includes(value.tipo)) value.institucion_id = null;
     }
-    if(entity==='movimientos'){
-      const usesCredit=obj.medio_pago==='TARJETA_CREDITO',usesDebit=obj.medio_pago==='TARJETA_DEBITO',usesCard=usesCredit||usesDebit;
-      if(usesCard&&obj.tipo!=='GASTO'){toast('Las tarjetas solo pueden utilizarse para registrar gastos.');return}
-      if(usesCard){
-        const selectedCard=card(obj.tarjeta_id),expected=usesCredit?'CREDITO':'DEBITO';
-        if(!selectedCard){toast('Selecciona la tarjeta utilizada.');return}
-        if((selectedCard.tipo||'CREDITO')!==expected){toast(`Selecciona una tarjeta de ${expected.toLowerCase()}.`);return}
-        if(usesDebit){if(!selectedCard.cuenta_id){toast('Esta tarjeta de débito no tiene una cuenta vinculada.');return}obj.cuenta_id=selectedCard.cuenta_id;obj.numero_cuotas=1}
-        else obj.cuenta_id=null;
-      }else{
-        if(!obj.cuenta_id){toast('Selecciona la cuenta de origen o destino.');return}
-        obj.tarjeta_id=null;obj.numero_cuotas=1;
-      }
+    if (entity === "tarjetas") {
+      if (value.tipo === "DEBITO") {
+        value.linea_credito = null; value.saldo_inicial_usado = 0; value.dia_cierre = null; value.dia_pago = null; value.tasa_interes_anual = 0;
+      } else value.cuenta_id = null;
+      if (!id) value.utilizado = Number(value.saldo_inicial_usado || 0);
     }
-    if(entity==='presupuestos'&&obj.mes)obj.mes+=obj.mes.length===7?'-01':'';
-    if(state.demo){
-      obj.id=id||crypto.randomUUID();const list=state.data[entity];const i=list.findIndex(x=>x.id===id);i>=0?list.splice(i,1,{...list[i],...obj}):list.unshift(obj);localStorage.setItem(`mf_${entity}`,JSON.stringify(list));
-    }else{
-      obj.user_id=state.user.id;
-      const query=id?sb.from(entity).update(obj).eq('id',id):sb.from(entity).insert(obj);
-      const {data:saved,error}=await query.select().single();
-      if(error){toast(error.code==='PGRST204'?'La base de datos necesita aplicar la actualización de tarjetas.':error.message);return}
-      const list=state.data[entity]||[],i=list.findIndex(x=>x.id===id);
-      i>=0?list.splice(i,1,saved):list.unshift(saved);state.data[entity]=list;
+    if (entity === "movimientos") {
+      value.numero_cuotas = Number(value.numero_cuotas || 1);
+      if (value.numero_cuotas > 1 && value.medio_pago !== "TARJETA_CREDITO") throw new Error("Las cuotas solo están disponibles para tarjeta de crédito.");
+      value.comprobanteFile = $("#receipt-file")?.files?.[0] || null;
+      if (formDataChecked("removeAttachment")) value.attachment = null;
+      const movementId = id || newId();
+      if (value.comprobanteFile) uploaded = await uploadReceipt(state.user.uid, movementId, value.comprobanteFile);
+      if (uploaded) value.attachment = uploaded;
+      delete value.comprobanteFile;
+      await saveMovement(state.user.uid, value, movementId, row);
+      if (uploaded && row?.attachment?.path && row.attachment.path !== uploaded.path) await deleteReceipt(row.attachment.path).catch(() => {});
+      if (row?.attachment?.path && value.attachment === null) await deleteReceipt(row.attachment.path).catch(() => {});
+    } else if (["transferencias", "pagosTarjeta"].includes(entity)) {
+      const docId = id || newId();
+      await saveLedgerEntry(state.user.uid, entity, value, docId, row);
+    } else {
+      await saveDocument(state.user.uid, entity, value, id);
     }
-    $('#record-dialog').close();toast('Registro guardado');render();
-  }finally{
-    saveButton.disabled=false;saveButton.classList.remove('is-loading');saveButton.removeAttribute('aria-busy');saveButton.textContent=previousLabel;
+    $("#record-dialog").close();
+    toast("Registro guardado.");
+    await loadReferenceData();
+    if (entity === "movimientos" && state.page === "resumen") await renderDashboard();
+    else if (state.page === "flujo" || state.page === "reportes") await loadReports(false);
+    else await loadEntityPage(false);
+  } catch (error) {
+    if (uploaded?.path) await deleteReceipt(uploaded.path).catch(() => {});
+    toast(authError(error));
+  } finally {
+    button.disabled = false;
+    button.textContent = "Guardar";
   }
 }
-async function remove(entity,id){const item=(state.data[entity]||[]).find(x=>x.id===id);if(entity==='cuentas'&&(state.data.movimientos||[]).some(x=>x.cuenta_id===id)){toast('Esta cuenta se conserva porque tiene movimientos asociados.');return}if(entity==='propietarios'&&(state.data.cuentas||[]).some(x=>x.propietario_id===id)){toast('Primero asigna sus cuentas a otro titular.');return}if(entity==='instituciones'&&!item?.user_id&&!state.demo){toast('Esta institución pertenece al catálogo base y no se puede eliminar.');return}if(entity==='instituciones'&&(state.data.cuentas||[]).some(x=>x.institucion_id===id)){toast('No se puede eliminar esta institución porque está vinculada a una cuenta.');return}if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.'))return;if(state.demo){state.data[entity]=state.data[entity].filter(x=>x.id!==id);localStorage.setItem(`mf_${entity}`,JSON.stringify(state.data[entity]))}else{const {error}=await sb.from(entity).delete().eq('id',id);if(error){toast(error.message);return}await loadAll()}toast('Registro eliminado');render()}
-boot().catch(e=>{console.error(e);toast('No se pudo iniciar la aplicación.')});
+
+function formDataChecked(name) { return Boolean($("#record-form [name='" + name + "']")?.checked); }
+
+async function contentClick(event) {
+  const add = event.target.closest("[data-new]");
+  const edit = event.target.closest("[data-edit]");
+  const remove = event.target.closest("[data-delete]");
+  if (add) return openForm(add.dataset.new, null, add.dataset.type ? { tipo: add.dataset.type } : {});
+  if (edit) return openForm(edit.dataset.edit, (state.data[edit.dataset.edit] || []).find((item) => item.id === edit.dataset.id));
+  if (remove) return deleteRow(remove.dataset.delete, remove.dataset.id);
+  if (event.target.closest("[data-account-clear]")) { state.accountFilters = {}; return renderAccounts(); }
+  const accountMovements = event.target.closest("[data-account-movements]");
+  if (accountMovements) {
+    state.movementAccountFilter = accountMovements.dataset.accountMovements;
+    if (state.page === "movimientos") return loadEntityPage(false);
+    location.hash = "#movimientos";
+    return;
+  }
+  if (event.target.closest("[data-clear-movement-filter]")) {
+    state.movementAccountFilter = null;
+    state.filter = {};
+    return loadEntityPage(false);
+  }
+  if (event.target.closest("[data-load-more]")) return loadEntityPage(true);
+  if (event.target.closest("[data-load-report-more]")) return loadReports(true);
+  const receipt = event.target.closest("[data-open-receipt]");
+  if (receipt) {
+    try { await openReceipt(receipt.dataset.openReceipt); }
+    catch (error) { toast(authError(error)); }
+  }
+  if (event.target.closest("[data-clear-filter]")) {
+    state.filter = {};
+    state.data[state.page] = [];
+    state.entityCursor = null;
+    await loadEntityPage(false);
+  }
+  if (event.target.closest("[data-reset-password]")) await resetPasswordForSignedInUser();
+}
+
+async function deleteRow(entity, id) {
+  const row = (state.data[entity] || []).find((item) => item.id === id);
+  if (!row || !confirm("¿Eliminar este registro? Esta acción no se puede deshacer.")) return;
+  try {
+    let receiptCleanupFailed = false;
+    if (["movimientos", "transferencias", "pagosTarjeta"].includes(entity)) {
+      await deleteLedgerEntry(state.user.uid, entity, id, row);
+      if (entity === "movimientos" && row.attachment?.path) await deleteReceipt(row.attachment.path).catch(() => { receiptCleanupFailed = true; });
+    } else await removeDocument(state.user.uid, entity, id);
+    toast(receiptCleanupFailed ? "Movimiento eliminado; no se pudo borrar el archivo adjunto." : "Registro eliminado.");
+    await loadReferenceData();
+    await loadEntityPage(false);
+  } catch (error) { toast(authError(error)); }
+}
+
+async function resetPasswordForSignedInUser() {
+  if (!state.user.email) { toast("Esta cuenta no tiene correo configurado."); return; }
+  try {
+    await services.authSdk.sendPasswordResetEmail(services.auth, state.user.email);
+    toast("Enviamos un enlace para restablecer la contraseña.");
+  } catch (error) { toast(authError(error)); }
+}
+
+async function boot() {
+  bind();
+  if (!firebaseReady) {
+    showAuth("Firebase aún no está configurado. Copia los seis valores de Firebase Console a firebase-config.js y vuelve a cargar la página.");
+    return;
+  }
+  try {
+    services = await getFirebaseServices();
+    services.authSdk.onAuthStateChanged(services.auth, async (user) => {
+      if (!user) {
+        state.user = null;
+        state.data = {};
+        showAuth();
+        return;
+      }
+      try { await onSignedIn(user); }
+      catch (error) { showDataError(error); }
+    });
+  } catch (error) {
+    console.error(error);
+    showAuth("No se pudo inicializar Firebase. Revisa firebase-config.js y la configuración del proyecto.");
+  }
+}
+
+boot();
