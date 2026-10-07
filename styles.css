@@ -176,3 +176,47 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .people-card:hover{border-color:#9db5ed;box-shadow:0 10px 24px rgba(24,42,76,.11)}
 .flow-guidance{border-color:#b6c9f5;background:#eaf0ff;color:#243e73}
 @media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(40,87,232,.18)}}
+
+/* Identidad cromática: bosque, jade y ámbar */
+:root{--primary:#08776f;--primary-soft:#dcefeb;--ink:#172d2b;--muted:#526965;--line:#cddbd6;--soft:#e9f0ed;--positive:#13784f;--negative:#c34c43;--sidebar:#fff;--shadow:0 7px 22px rgba(20,56,49,.09)}
+.main{background:var(--soft)}
+.topbar h1{color:#142b28}
+.eyebrow{color:#08776f}
+.sidebar nav small{color:#5b756f}
+.sidebar nav a{color:#405b56}
+.sidebar nav a:hover{background:#e5f1ee;color:#183b37}
+.sidebar nav a.active{background:#08776f;color:#fff;box-shadow:0 7px 16px rgba(8,119,111,.24)}
+.sidebar nav a.active::before{background:#c8f0e8}
+.sidebar nav a.active .nav-icon{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.13);color:#fff}
+.sidebar nav .nav-icon{color:#5f7974}
+.sidebar .profile{border-top-color:#d1dfda}
+.sidebar .profile .avatar{background:#dcefeb;color:#08776f}
+.sidebar nav::-webkit-scrollbar-thumb{background:#b8ccc5}
+.date-chip{border-color:#cbdad4;color:#405b56}
+.btn.primary{background:#08776f;box-shadow:0 4px 12px rgba(8,119,111,.2)}
+.btn.primary:hover{background:#06665f}
+.btn.secondary{border-color:#c5d5cf;color:#24423d}
+.btn.secondary:hover{border-color:#91b9ad;background:#f4faf8}
+.panel,.hero-card,.stat-card,.item-card,.account-card{border-color:#cddbd6;box-shadow:var(--shadow)}
+.filters.panel{border-color:#b9d4cb;background:#dfece7;box-shadow:0 5px 16px rgba(23,69,59,.07)}
+.filters input,.filters select{border-color:#bdcec8;color:#1a3530}
+.table-panel th{background:#e3ede9;color:#35524b;border-bottom-color:#cbdad4}
+.table-panel td{color:#263e39}
+.table-panel .empty{background:#f8fbf9;color:#4a625d}
+.badge{background:#dcefeb;color:#08675f}
+.badge.gasto{background:#fce5e1;color:#a83b33}
+.badge.ingreso{background:#d9f0e2;color:#096542}
+.positive{color:#13784f}.negative{color:#c34c43}
+.transaction-icon{background:#fce5e1;color:#ac3e35}
+.transaction-icon.income{background:#d9f0e2;color:#0d6d47}
+.bar i,.progress i{background:linear-gradient(90deg,#08776f,#38a58e)}
+.account-icon{background:color-mix(in srgb,var(--account-color) 23%,white)}
+.insight-card{background:#173d39}
+.insight-card .eyebrow{color:#9ce1d2}
+.sidebar nav a[href="#metas"] .nav-icon{border-color:#f2dfad;background:#fff5dc;color:#92600b}
+.sidebar nav a[href="#metas"].active .nav-icon{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.13);color:#fff}
+.people-card,.people-empty{border-color:#cddbd6;box-shadow:var(--shadow)}
+.people-relation{background:#dcefeb;color:#08675f}
+.people-card:hover{border-color:#8bbcb0;box-shadow:0 10px 24px rgba(20,56,49,.12)}
+.flow-guidance{border-color:#acd3c8;background:#e1f0eb;color:#214f46}
+@media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(8,119,111,.2)}}
