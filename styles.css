@@ -220,3 +220,28 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .people-card:hover{border-color:#8bbcb0;box-shadow:0 10px 24px rgba(20,56,49,.12)}
 .flow-guidance{border-color:#acd3c8;background:#e1f0eb;color:#214f46}
 @media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(8,119,111,.2)}}
+
+/* Ajustes responsive para navegación y movimientos */
+.table-panel>.section-head{margin:0;padding:22px 24px 18px}
+.table-panel>.section-head h2{margin:0}
+.table-panel>.section-head .caption{margin:6px 0 0}
+@media(max-width:760px){
+  .sidebar nav{gap:6px;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:#b8ccc5 transparent}
+  .sidebar nav small{display:none}
+  .sidebar nav a{scroll-snap-align:start}
+  .table-panel>.section-head{padding:19px 18px 15px}
+  .movement-cards{overflow:visible}
+  .movement-cards table{display:block;width:100%}
+  .movement-cards thead{display:none}
+  .movement-cards tbody{display:grid;gap:12px}
+  .movement-cards tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;padding:4px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 4px 12px rgba(20,56,49,.06)}
+  .movement-cards td{display:flex;min-width:0;flex-direction:column;align-items:flex-start;justify-content:center;overflow-wrap:anywhere;padding:11px 3px;border-bottom:1px solid #edf1ef;text-align:left;white-space:normal;font-size:13px}
+  .movement-cards td::before{margin-bottom:5px;color:var(--muted);content:attr(data-label);font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+  .movement-cards td:nth-child(6){align-items:flex-end}
+  .movement-cards td:nth-child(9){grid-column:1/-1}
+  .movement-cards td.actions{flex-direction:row;align-items:center;justify-content:flex-end;gap:8px;padding:9px 0 2px;border:0}
+  .movement-cards td.actions::before,.movement-cards td.empty::before{display:none;content:none}
+  .movement-cards td.actions button{min-height:42px;margin:0;padding:0 12px;border:1px solid #cbdad4;border-radius:8px;background:#fff;color:var(--primary);font-size:12px;font-weight:700}
+  .movement-cards td.actions button.danger{border-color:#f0ceca;color:var(--negative)}
+  .movement-cards td.empty{grid-column:1/-1;align-items:center;padding:22px 8px;border:0;color:var(--muted);text-align:center}
+}
