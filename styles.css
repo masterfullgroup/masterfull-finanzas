@@ -136,3 +136,43 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .sidebar .profile button:hover{background:#f1f4fa;color:#34425b}
 @media(max-width:760px){.sidebar{border-right:0;border-bottom:1px solid #e8ecf3;box-shadow:0 3px 14px rgba(24,32,51,.035)}.sidebar-brand{height:65px}.sidebar nav{padding:7px 9px}.sidebar nav a{min-height:42px}.sidebar nav a::before{top:auto;right:10px;bottom:0;left:10px;width:auto;height:3px;border-radius:4px 4px 0 0}.sidebar .profile{display:none}}
 @media(prefers-reduced-motion:reduce){.sidebar nav a{transition:none}}
+
+/* Paleta Masterfull: cobalto, pizarra, jade y coral */
+:root{--primary:#2857e8;--primary-soft:#e4ecff;--ink:#14213a;--muted:#586983;--line:#d7e0ed;--soft:#edf2f8;--positive:#087f5b;--negative:#c43d50;--sidebar:#fff;--shadow:0 7px 22px rgba(24,42,76,.07)}
+.sidebar nav small{color:#687894}
+.sidebar nav a{color:#43536d}
+.sidebar nav .nav-icon{color:#657793}
+.sidebar nav a:hover{background:#eaf0fc;color:#1c3158}
+.sidebar nav a.active{background:var(--primary);color:#fff;box-shadow:0 7px 16px rgba(40,87,232,.22)}
+.sidebar nav a.active::before{background:#fff}
+.sidebar nav a.active .nav-icon{border-color:rgba(255,255,255,.26);background:rgba(255,255,255,.14);color:#fff}
+.sidebar .profile{border-top-color:#dce4ef}
+.sidebar .profile .avatar{background:#dfe8ff;color:#214bd0}
+.sidebar nav::-webkit-scrollbar-thumb{background:#bdc9dc}
+.main{background:var(--soft)}
+.topbar h1{color:#13213b}
+.eyebrow{color:#214fd8}
+.date-chip{border-color:#d3ddec;background:#fff;color:#455874}
+.btn.primary{background:var(--primary);box-shadow:0 4px 11px rgba(40,87,232,.18)}
+.btn.primary:hover{background:#2049c9}
+.btn.secondary{border-color:#cbd6e5;background:#fff;color:#263a5c}
+.btn.secondary:hover{border-color:#9fb4df;background:#f7f9ff}
+.panel,.hero-card,.stat-card,.item-card,.account-card{border-color:#d7e0ed;box-shadow:var(--shadow)}
+.filters.panel{border-color:#ccd9f2;background:#e8eefb;box-shadow:0 5px 16px rgba(37,65,119,.045)}
+.filters input,.filters select{border-color:#cbd6e5;background:#fff;color:#1a2b48}
+.table-panel th{background:#eaf0f9;color:#405472;border-bottom-color:#d3deed}
+.table-panel td{color:#283953}
+.table-panel .empty{background:#fbfcfe;color:#50627d}
+.badge{background:#e4ecff;color:#234dcc}
+.badge.gasto{background:#fde9ec;color:#aa3044}
+.badge.ingreso{background:#def4eb;color:#086849}
+.positive{color:#087f5b}.negative{color:#c43d50}
+.transaction-icon{background:#fde9ec;color:#b53248}
+.transaction-icon.income{background:#def4eb;color:#08704f}
+.bar i,.progress i{background:linear-gradient(90deg,#2857e8,#6083f2)}
+.account-icon{background:color-mix(in srgb,var(--account-color) 19%,white)}
+.people-card,.people-empty{border-color:#d7e0ed;box-shadow:var(--shadow)}
+.people-relation{background:#e4ecff;color:#244dc8}
+.people-card:hover{border-color:#9db5ed;box-shadow:0 10px 24px rgba(24,42,76,.11)}
+.flow-guidance{border-color:#b6c9f5;background:#eaf0ff;color:#243e73}
+@media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(40,87,232,.18)}}
