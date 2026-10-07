@@ -220,6 +220,7 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .people-card:hover{border-color:#8bbcb0;box-shadow:0 10px 24px rgba(20,56,49,.12)}
 .flow-guidance{border-color:#acd3c8;background:#e1f0eb;color:#214f46}
 @media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(8,119,111,.2)}}
+.sidebar-brand{gap:18px}
 
 /* Ajustes responsive para navegación y movimientos */
 .table-panel>.section-head{margin:0;padding:22px 24px 18px}
