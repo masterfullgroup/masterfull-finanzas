@@ -2,25 +2,25 @@
 
 /* 1. Primitivos: valores base de color, espaciado, tipografía y forma. */
 :root {
-  --mf-jade-50: #f1f8f6;
-  --mf-jade-100: #dcefeb;
-  --mf-jade-300: #91c4b8;
-  --mf-jade-700: #08776f;
-  --mf-jade-800: #06665f;
-  --mf-ink-900: #172d2b;
-  --mf-ink-700: #405b56;
-  --mf-ink-500: #526965;
+  --mf-jade-50: #eaf3ef;
+  --mf-jade-100: #d3e6df;
+  --mf-jade-300: #80b8aa;
+  --mf-jade-700: #006d64;
+  --mf-jade-800: #00574f;
+  --mf-ink-900: #102522;
+  --mf-ink-700: #304a44;
+  --mf-ink-500: #485f57;
   --mf-neutral-0: #ffffff;
-  --mf-neutral-100: #e9f0ed;
-  --mf-neutral-200: #cddbd6;
-  --mf-neutral-300: #bdcec8;
-  --mf-success-700: #13784f;
+  --mf-neutral-100: #e4ebe7;
+  --mf-neutral-200: #c3d1cb;
+  --mf-neutral-300: #aebfb7;
+  --mf-success-700: #116b43;
   --mf-success-100: #d9f0e2;
-  --mf-danger-700: #a83b33;
-  --mf-danger-600: #c34c43;
-  --mf-danger-100: #fce5e1;
-  --mf-amber-800: #76500b;
-  --mf-amber-100: #fff5dc;
+  --mf-danger-700: #9d342c;
+  --mf-danger-600: #bd4337;
+  --mf-danger-100: #f9e3df;
+  --mf-amber-800: #714800;
+  --mf-amber-100: #ffefc9;
 
   --mf-space-1: 4px;
   --mf-space-2: 8px;
@@ -33,11 +33,19 @@
   --mf-radius-card: 14px;
   --mf-radius-dialog: 18px;
   --mf-radius-pill: 999px;
-  --mf-shadow-card: 0 7px 22px rgba(20, 56, 49, .09);
-  --mf-shadow-raised: 0 12px 30px rgba(20, 56, 49, .14);
+  --mf-shadow-card: 0 8px 24px rgba(16, 48, 40, .10);
+  --mf-shadow-raised: 0 14px 34px rgba(16, 48, 40, .16);
   --mf-motion-fast: 150ms;
   --mf-font-body: Inter, Arial, sans-serif;
   --mf-font-heading: "Plus Jakarta Sans", Inter, Arial, sans-serif;
+  --mf-text-body: 15px;
+  --mf-text-label: 13px;
+  --mf-text-caption: 13px;
+  --mf-text-section: 20px;
+  --mf-text-page-title: clamp(30px, 2.5vw, 36px);
+  --mf-weight-medium: 500;
+  --mf-weight-semibold: 600;
+  --mf-weight-bold: 700;
   --mf-brand-content-offset-y: 6px;
 }
 
@@ -74,17 +82,26 @@
   --ds-control-bg: var(--ds-surface);
   --ds-control-fg: var(--ds-text-primary);
   --ds-control-border: var(--ds-border-strong);
-  --ds-control-focus-ring: 0 0 0 3px rgba(8, 119, 111, .18);
+  --ds-control-focus-ring: 0 0 0 3px rgba(0, 109, 100, .22);
   --ds-card-bg: var(--ds-surface);
   --ds-card-border: var(--ds-border);
   --ds-card-radius: var(--mf-radius-card);
   --ds-card-shadow: var(--mf-shadow-card);
-  --ds-table-head-bg: #e3ede9;
-  --ds-table-head-fg: #35524b;
+  --ds-table-head-bg: #dce8e3;
+  --ds-table-head-fg: #263f38;
   --ds-dialog-bg: var(--ds-surface);
-  --ds-dialog-overlay: rgba(23, 45, 43, .58);
+  --ds-dialog-overlay: rgba(16, 37, 34, .62);
   --ds-surface-hover: #f1f8f6;
   --ds-separator: #e4ece8;
+  --ds-button-height: 48px;
+  --ds-button-radius: 10px;
+  --ds-button-font-size: 14px;
+  --ds-button-primary-shadow: 0 5px 14px rgba(0, 109, 100, .25);
+  --ds-field-height: 48px;
+  --ds-field-radius: 10px;
+  --ds-card-padding: 24px;
+  --ds-page-title: var(--mf-text-page-title);
+  --ds-section-title: var(--mf-text-section);
 }
 
 body { background: var(--ds-canvas); color: var(--ds-text-primary); font-family: var(--mf-font-body); }
@@ -191,3 +208,63 @@ dialog::backdrop { background: var(--ds-dialog-overlay); }
   .table-panel .empty { padding-block: 24px !important; }
 }
 @media (prefers-reduced-motion: reduce) { .btn, .people-card, .item-card, .auth-card input, .form-grid input, .form-grid select, .form-grid textarea { transition: none; } }
+
+/* Jerarquía fuerte para lectura financiera y acciones primarias. */
+body { font-size: var(--mf-text-body); line-height: 1.55; }
+.main { padding-bottom: 52px; }
+.sidebar nav small { color: var(--ds-text-secondary); font-size: 11px; letter-spacing: .13em; }
+.sidebar nav a { min-height: 48px; border-radius: 12px; font-size: 14px; font-weight: var(--mf-weight-semibold); }
+.sidebar nav .nav-icon { width: 36px; height: 36px; flex-basis: 36px; border-radius: 11px; }
+.topbar { min-height: 112px; }
+.topbar h1 { font-size: var(--ds-page-title); font-weight: var(--mf-weight-bold); letter-spacing: -.04em; line-height: 1.12; }
+.eyebrow { margin-bottom: 9px; color: var(--ds-brand); font-size: 11px; font-weight: var(--mf-weight-bold); letter-spacing: .15em; }
+.caption { color: var(--ds-text-secondary); font-size: var(--mf-text-caption); line-height: 1.55; }
+.panel h2, .hero-card h2, .section-head h2 { font-size: var(--ds-section-title); font-weight: var(--mf-weight-bold); line-height: 1.28; letter-spacing: -.025em; }
+.btn { min-height: var(--ds-button-height); padding-inline: 18px; border-radius: var(--ds-button-radius); font-size: var(--ds-button-font-size); font-weight: var(--mf-weight-bold); }
+.btn.primary { box-shadow: var(--ds-button-primary-shadow); }
+.btn.primary:hover { box-shadow: 0 8px 18px rgba(0, 109, 100, .30); transform: translateY(-1px); }
+.btn.primary:active:not(:disabled) { box-shadow: none; transform: translateY(0); }
+.btn.secondary { border-width: 1px; }
+.btn.secondary:hover { border-color: var(--mf-jade-300); background: var(--ds-brand-soft); color: var(--mf-jade-800); }
+.actions button, .account-actions button, .people-actions button, .link-button, .text-button { min-height: 40px; padding: 8px 11px; border-radius: var(--ds-button-radius); font-size: 13px; font-weight: var(--mf-weight-semibold); }
+.actions button:hover, .account-actions button:hover, .people-actions button:hover, .link-button:hover, .text-button:hover { background: var(--ds-brand-soft); }
+.actions button.danger:hover, .account-actions button.danger:hover, .people-actions button.danger:hover { background: var(--ds-danger-soft); }
+.date-chip { font-size: 14px; font-weight: var(--mf-weight-medium); }
+.stat-card span { color: var(--ds-text-secondary); font-size: 12px; font-weight: var(--mf-weight-semibold); letter-spacing: .07em; }
+.stat-card strong { font-size: 25px; letter-spacing: -.025em; }
+.main-balance { color: var(--ds-text-primary); font-size: clamp(38px, 3.2vw, 48px); }
+.cashflow span { color: var(--ds-text-secondary); font-size: 13px; }
+.cashflow strong, .transaction-info strong { font-size: 15px; }
+.transaction-info small { color: var(--ds-text-secondary); font-size: 13px; }
+.filters.panel { gap: 10px; padding: 16px; border: 1px solid var(--ds-border-strong); }
+.filters input, .filters select, .account-filters input, .account-filters select,
+.auth-card input, .form-grid input:not([type="color"]), .form-grid select, .form-grid textarea { min-height: var(--ds-field-height); border-radius: var(--ds-field-radius); font-size: 14px; }
+.form-grid label, .auth-card label { color: var(--ds-text-primary); font-size: var(--mf-text-label); font-weight: var(--mf-weight-semibold); }
+.panel, .hero-card, .stat-card, .item-card, .account-card, .people-card, .people-empty { box-shadow: var(--ds-card-shadow); }
+.hero-card { border-top: 3px solid var(--ds-brand); }
+.table-panel th { padding: 15px 17px; color: #263f38; font-size: 12px; font-weight: var(--mf-weight-bold); letter-spacing: .08em; }
+.table-panel td { padding: 16px 17px; color: var(--ds-text-primary); font-size: 14px; line-height: 1.5; }
+.badge { padding: 5px 10px; font-size: 12px; font-weight: var(--mf-weight-bold); }
+.account-summary span { font-size: 12px; letter-spacing: .06em; }
+.account-summary strong { font-size: 21px; }
+.account-main strong, .account-balance strong { font-size: 16px; }
+.account-main small, .account-balance small { color: var(--ds-text-secondary); font-size: 13px; }
+.people-identity h3 { font-size: 16px; }
+.people-relation { font-size: 12px; font-weight: var(--mf-weight-semibold); }
+.people-contact { color: var(--ds-text-secondary); font-size: 13px; }
+.item-card h3 { font-size: 18px; }
+.item-card dl { font-size: 14px; }
+.empty { color: var(--ds-text-secondary); font-size: 14px; }
+dialog h2 { font-size: 22px; }
+dialog header, dialog footer { padding: 22px 26px; }
+.toast { background: #102522; font-size: 14px; }
+@media (max-width: 760px) {
+  .main { padding-bottom: 36px; }
+  .topbar { min-height: 86px; }
+  .topbar h1 { font-size: 26px; }
+  .top-actions .btn { min-height: 46px; padding-inline: 14px; font-size: 13px; }
+  .stat-card strong { font-size: 23px; }
+  .table-panel td { padding: 13px 14px; }
+  .filters input, .filters select { min-height: 46px; }
+  dialog header, dialog footer { padding: 17px 18px; }
+}
