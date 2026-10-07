@@ -222,6 +222,11 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 @media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(8,119,111,.2)}}
 .sidebar-brand{gap:18px}
 
+/* Foco de selectores en el color de marca */
+select:focus-visible,.form-grid input:focus-visible,.form-grid textarea:focus-visible{border-color:#08776f;outline:0;box-shadow:0 0 0 3px rgba(8,119,111,.18)}
+select option{background:#fff;color:#172d2b}
+select option:checked,select option:hover{background:#08776f;color:#fff}
+
 /* Ajustes responsive para navegación y movimientos */
 .table-panel>.section-head{margin:0;padding:22px 24px 18px}
 .table-panel>.section-head h2{margin:0}
