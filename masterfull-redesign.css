@@ -380,6 +380,39 @@ select option:checked, select option:focus, select option:hover { background-col
 .period-control, .date-chip, .select-control { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--mf-border); border-radius: 9px; background: var(--mf-card); color: var(--mf-copy); }
 .period-control svg { width: 16px; height: 16px; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .period-control input { width: 108px; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--mf-ink); font-size: 11px; font-weight: 650; }
+.date-control { position: relative; display: inline-flex; min-width: 0; align-items: center; }
+.date-control [data-date-input] { width: 100%; min-width: 128px; min-height: 38px; padding: 0 38px 0 10px; border: 1px solid var(--mf-border-strong); border-radius: 9px; background: var(--mf-card); color: var(--mf-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.date-control [data-date-input]::placeholder { color: var(--mf-muted); }
+.date-control [data-date-input]:focus { border-color: var(--mf-emerald); outline: 3px solid rgba(16, 185, 129, .14); }
+.date-open { position: absolute; right: 4px; display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #07845b; cursor: pointer; }
+.date-open:hover, .date-open[aria-expanded="true"] { background: var(--mf-emerald-soft); color: var(--mf-emerald-hover); }
+.date-open svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.date-popover { position: absolute; z-index: 70; top: calc(100% + 7px); left: 0; width: 276px; padding: 10px; border: 1px solid var(--mf-border); border-radius: 12px; background: var(--mf-card); box-shadow: var(--mf-shadow-raised); color: var(--mf-ink); }
+.date-popover[hidden] { display: none !important; }
+.date-popover-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 5px; margin-bottom: 8px; }
+.date-popover-header strong { color: var(--mf-ink); font-size: 12px; font-weight: 700; text-align: center; text-transform: capitalize; }
+.date-popover-header button, .date-day, .date-month { display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--mf-copy); cursor: pointer; }
+.date-popover-header button { width: 32px; height: 32px; color: var(--mf-emerald-hover); font-size: 22px; line-height: 1; }
+.date-popover-header button:hover, .date-day:hover, .date-month:hover { background: var(--mf-emerald-soft); color: var(--mf-emerald-hover); }
+.date-weekdays, .date-day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.date-weekdays { margin-bottom: 4px; color: var(--mf-muted); font-size: 10px; font-weight: 700; text-align: center; }
+.date-day { min-height: 31px; font-size: 11px; }
+.date-day.is-outside { color: #a5b1bd; }
+.date-day.is-today { box-shadow: inset 0 0 0 1px var(--mf-emerald); color: var(--mf-emerald-hover); font-weight: 750; }
+.date-day.is-selected, .date-month.is-selected { background: var(--mf-emerald); color: #fff; font-weight: 750; }
+.date-day.is-selected:hover, .date-month.is-selected:hover { background: var(--mf-emerald-hover); color: #fff; }
+.date-month-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 6px 0 10px; }
+.date-month { min-height: 40px; text-transform: capitalize; }
+.date-popover-footer { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--mf-border); }
+.date-popover-footer button { padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--mf-emerald-hover); cursor: pointer; font-size: 11px; font-weight: 650; }
+.date-popover-footer button:hover { background: var(--mf-emerald-soft); }
+.period-control .date-control { width: 147px; }
+.period-control .date-control [data-date-input] { min-width: 0; min-height: 35px; padding-left: 0; padding-right: 33px; border: 0; background: transparent; }
+.period-control .date-open { display: none; }
+.period-control .date-popover { left: auto; right: 0; }
+.filters .date-control { flex: 0 1 170px; }
+.form-grid .field-control { display: grid; min-width: 0; gap: 7px; color: var(--mf-ink); font-size: 13px; font-weight: 600; }
+.form-grid .field-control .date-control { width: 100%; }
 .date-chip { font-size: 11px; white-space: nowrap; }
 .btn { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--mf-radius-control); cursor: pointer; font-size: 11px; font-weight: 700; transition: transform 140ms ease, color 140ms ease, border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease; }
 .btn.primary { border-color: var(--mf-emerald); background: var(--mf-emerald); color: #05271e; box-shadow: 0 4px 12px rgba(16, 185, 129, .16); }
@@ -626,6 +659,8 @@ dialog h2 { margin: 0; color: var(--mf-ink); font: 700 20px/1.3 "Plus Jakarta Sa
 :root[data-theme="dark"] .positive { color: #65dfb5 !important; }
 :root[data-theme="dark"] .negative { color: #ff8585 !important; }
 :root[data-theme="dark"] .compact-account-icon { color: #66d9b1; }
+:root[data-theme="dark"] .date-control [data-date-input] { border-color: var(--mf-border-strong); background: #0d1925; }
+:root[data-theme="dark"] .date-popover { background: var(--mf-card); }
 :root[data-theme="dark"] .auth-card .brand-mark { background: #16354a; }
 :root[data-theme="dark"] .auth-card input, :root[data-theme="dark"] .form-grid input, :root[data-theme="dark"] .form-grid select, :root[data-theme="dark"] .form-grid textarea, :root[data-theme="dark"] .filters input, :root[data-theme="dark"] .filters select, :root[data-theme="dark"] .account-filters input, :root[data-theme="dark"] .account-filters select { background: #0d1925; }
 
@@ -698,6 +733,8 @@ dialog h2 { margin: 0; color: var(--mf-ink); font: 700 20px/1.3 "Plus Jakarta Sa
   .account-actions { grid-column: 1 / -1; }
   .filters.panel, .account-filters.panel { align-items: stretch; }
   .filters input, .filters select, .account-filters input, .account-filters select { min-width: 100%; }
+  .date-popover { width: min(276px, calc(100vw - 32px)); }
+  .filters .date-control:nth-child(2) .date-popover, .form-grid .field-control:nth-child(even) .date-popover { right: 0; left: auto; }
 }
 @media (max-width: 480px) {
   .main { padding-inline: 12px; }

@@ -127,6 +127,101 @@ function todayISO() { return dateInAppTimeZone(); }
 function currentMonth() { return todayISO().slice(0, 7); }
 function newId() { return crypto.randomUUID(); }
 
+function dateControlMarkup(name, value, kind = "date", required = false, id = "", ariaLabel = "") {
+  const normalized = String(value || "");
+  const pattern = kind === "month" ? "[0-9]{4}-[0-9]{2}" : "[0-9]{4}-[0-9]{2}-[0-9]{2}";
+  const placeholder = kind === "month" ? "aaaa-mm" : "aaaa-mm-dd";
+  const label = kind === "month" ? "Elegir mes" : "Elegir fecha";
+  const month = normalized.slice(0, 7) || currentMonth();
+  return `<span class="date-control" data-date-control data-kind="${kind}" data-view-month="${esc(month)}"><input ${id ? `id="${esc(id)}"` : ""} name="${esc(name)}" data-date-input type="text" inputmode="numeric" autocomplete="off" placeholder="${placeholder}" pattern="${pattern}" title="Usa el formato ${placeholder}" aria-label="${esc(ariaLabel || label)}" value="${esc(normalized)}" ${required ? "required" : ""}><button class="date-open" type="button" data-date-open aria-label="${label}" aria-expanded="false"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></button><div class="date-popover" data-date-popover role="dialog" aria-label="${label}" hidden></div></span>`;
+}
+
+function localISODate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function renderDatePopover(control) {
+  const input = control.querySelector("[data-date-input]");
+  const kind = control.dataset.kind;
+  const selected = input.value;
+  const validDate = kind === "month" ? /^[0-9]{4}-[0-9]{2}$/.test(selected) : /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selected);
+  const initialMonth = validDate ? selected.slice(0, 7) : currentMonth();
+  const viewMonth = control.dataset.viewMonth || initialMonth;
+  const [year, month] = viewMonth.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1, 12);
+  const monthLabel = new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric", timeZone: APP_TIME_ZONE }).format(firstDay);
+  const monthButtons = kind === "month"
+    ? `<div class="date-month-grid">${Array.from({ length: 12 }, (_, index) => {
+        const value = `${year}-${String(index + 1).padStart(2, "0")}`;
+        const name = new Intl.DateTimeFormat("es-PE", { month: "short", timeZone: APP_TIME_ZONE }).format(new Date(year, index, 1, 12)).replace(".", "");
+        return `<button type="button" class="date-month${value === selected ? " is-selected" : ""}" data-date-value="${value}" aria-pressed="${value === selected}">${esc(name)}</button>`;
+      }).join("")}</div>`
+    : (() => {
+        const offset = (firstDay.getDay() + 6) % 7;
+        const start = new Date(year, month - 1, 1 - offset, 12);
+        const today = todayISO();
+        const weekdays = ["L", "M", "X", "J", "V", "S", "D"].map((day) => `<span aria-hidden="true">${day}</span>`).join("");
+        const days = Array.from({ length: 42 }, (_, index) => {
+          const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12);
+          const value = localISODate(date);
+          const classes = ["date-day", date.getMonth() !== month - 1 ? "is-outside" : "", value === selected ? "is-selected" : "", value === today ? "is-today" : ""].filter(Boolean).join(" ");
+          return `<button type="button" class="${classes}" data-date-value="${value}" aria-pressed="${value === selected}" aria-label="${esc(new Intl.DateTimeFormat("es-PE", { dateStyle: "full", timeZone: APP_TIME_ZONE }).format(date))}">${date.getDate()}</button>`;
+        }).join("");
+        return `<div class="date-weekdays" aria-hidden="true">${weekdays}</div><div class="date-day-grid">${days}</div>`;
+      })();
+  const todayValue = kind === "month" ? currentMonth() : todayISO();
+  const footer = `<footer class="date-popover-footer"><button type="button" data-date-clear>Limpiar</button><button type="button" data-date-today>Hoy</button></footer>`;
+  control.querySelector("[data-date-popover]").innerHTML = `<header class="date-popover-header"><button type="button" data-date-shift="-1" aria-label="${kind === "month" ? "Año anterior" : "Mes anterior"}">‹</button><strong>${esc(monthLabel)}</strong><button type="button" data-date-shift="1" aria-label="${kind === "month" ? "Año siguiente" : "Mes siguiente"}">›</button></header>${monthButtons}${footer}`;
+  control.querySelector("[data-date-popover]").dataset.today = todayValue;
+}
+
+function closeDatePopovers(except = null) {
+  document.querySelectorAll("[data-date-control]").forEach((control) => {
+    if (control === except) return;
+    control.querySelector("[data-date-popover]").hidden = true;
+    control.querySelector("[data-date-open]").setAttribute("aria-expanded", "false");
+  });
+}
+
+function onDateControlClick(event) {
+  const inputTarget = event.target.closest("[data-date-input]");
+  const openButton = event.target.closest("[data-date-open]") || (inputTarget && inputTarget.closest("[data-date-control]").querySelector("[data-date-open]"));
+  if (openButton) {
+    const control = openButton.closest("[data-date-control]");
+    const input = control.querySelector("[data-date-input]");
+    const pattern = control.dataset.kind === "month" ? /^[0-9]{4}-[0-9]{2}$/ : /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+    if (pattern.test(input.value)) control.dataset.viewMonth = input.value.slice(0, 7);
+    closeDatePopovers(control);
+    renderDatePopover(control);
+    const popover = control.querySelector("[data-date-popover]");
+    popover.hidden = false;
+    openButton.setAttribute("aria-expanded", "true");
+    return;
+  }
+  const action = event.target.closest("[data-date-shift], [data-date-value], [data-date-today], [data-date-clear]");
+  if (!action) {
+    if (!event.target.closest("[data-date-control]")) closeDatePopovers();
+    return;
+  }
+  const control = action.closest("[data-date-control]");
+  if (!control) return;
+  if (action.hasAttribute("data-date-shift")) {
+    const [year, month] = control.dataset.viewMonth.split("-").map(Number);
+    const date = control.dataset.kind === "month" ? new Date(year + Number(action.dataset.dateShift), month - 1, 1, 12) : new Date(year, month - 1 + Number(action.dataset.dateShift), 1, 12);
+    control.dataset.viewMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    renderDatePopover(control);
+    return;
+  }
+  const input = control.querySelector("[data-date-input]");
+  const popover = control.querySelector("[data-date-popover]");
+  input.value = action.hasAttribute("data-date-today") ? popover.dataset.today : action.hasAttribute("data-date-clear") ? "" : action.dataset.dateValue;
+  if (input.value) control.dataset.viewMonth = input.value.slice(0, 7);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  popover.hidden = true;
+  control.querySelector("[data-date-open]").setAttribute("aria-expanded", "false");
+}
+
 function navHTML() {
   return NAV.map((item) => {
     if (item.length === 1) return `<small>${esc(item[0])}</small>`;
@@ -218,13 +313,17 @@ function bind() {
     if (!event.target.closest(".global-search")) closeGlobalSearch();
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDatePopovers();
     if (event.key === "/" && !event.ctrlKey && !event.metaKey && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
       event.preventDefault();
       $("#global-search-input").focus();
     }
   });
+  document.addEventListener("click", onDateControlClick);
   $("#dashboard-month").addEventListener("change", (event) => {
     state.dashboardMonth = event.target.value || currentMonth();
+    const control = event.target.closest("[data-date-control]");
+    if (control && event.target.value) control.dataset.viewMonth = event.target.value.slice(0, 7);
     if (state.page === "resumen") void renderDashboard();
   });
   $("#auth-form").addEventListener("submit", submitAuth);
@@ -679,7 +778,7 @@ function renderEntity(entity) {
   const rows = state.data[entity] || [];
   const fields = LIST_FIELDS[entity] || [];
   const filterable = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
-  const filters = filterable ? `<form class="filters panel" data-filter-form><input name="startDate" type="date" aria-label="Desde" value="${esc(state.filter.startDate || "")}"><input name="endDate" type="date" aria-label="Hasta" value="${esc(state.filter.endDate || "")}">${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
+  const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
   const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
   const visibleRows = entity === "instituciones" ? institutionRows : rows;
   if (entity === "personas") {
@@ -792,6 +891,7 @@ function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
   let inputValue = value ?? "";
   if (type === "month" && inputValue) inputValue = String(inputValue).slice(0, 7);
   if (["date", "month"].includes(type) && !inputValue) inputValue = type === "month" ? currentMonth() : todayISO();
+  if (["date", "month"].includes(type)) return `<div class="field-control" data-field="${field}"><label for="date-${esc(field)}">${esc(label)}</label>${dateControlMarkup(field, inputValue, type, !optional, `date-${field}`)}</div>`;
   const step = type === "money" ? 'step="0.01" min="0.01" inputmode="decimal"' : type === "number" ? 'step="1" min="0" inputmode="numeric"' : "";
   return `<label data-field="${field}">${esc(label)}<input name="${field}" type="${type === "money" ? "number" : type}" ${step} value="${esc(inputValue)}" ${optionalAttr}></label>`;
 }

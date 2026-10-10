@@ -86,7 +86,7 @@
       </header>
       <section class="page-heading">
         <div class="page-heading-copy"><p id="page-eyebrow" class="eyebrow">TU ESPACIO FINANCIERO</p><h1 id="page-title">Dashboard</h1><p id="page-description" class="page-description">Aquí tienes un resumen de tu situación financiera.</p></div>
-        <div class="page-actions"><label id="dashboard-period-control" class="period-control"><svg aria-hidden="true"><use href="#i-calendar"></use></svg><span class="sr-only">Mes del resumen</span><input id="dashboard-month" type="month" aria-label="Mes del resumen"></label><span id="today" class="date-chip"></span><button id="add-main" class="btn primary"><span aria-hidden="true">＋</span> Nuevo registro</button></div>
+        <div class="page-actions"><div id="dashboard-period-control" class="period-control"><svg aria-hidden="true"><use href="#i-calendar"></use></svg><span class="sr-only">Mes del resumen</span><span class="date-control" data-date-control data-kind="month" data-view-month=""><input id="dashboard-month" name="dashboardMonth" data-date-input type="text" inputmode="numeric" autocomplete="off" placeholder="aaaa-mm" pattern="[0-9]{4}-[0-9]{2}" aria-label="Mes del resumen"><button class="date-open" type="button" data-date-open aria-label="Elegir mes" aria-expanded="false"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></button><div class="date-popover" data-date-popover role="dialog" aria-label="Elegir mes" hidden></div></span></div><span id="today" class="date-chip"></span><button id="add-main" class="btn primary"><span aria-hidden="true">＋</span> Nuevo registro</button></div>
       </section>
       <div id="content"></div>
     </main>
