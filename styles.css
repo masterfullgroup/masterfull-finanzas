@@ -251,3 +251,28 @@ select option:checked,select option:hover{background:#08776f;color:#fff}
   .movement-cards td.actions button.danger{border-color:#f0ceca;color:var(--negative)}
   .movement-cards td.empty{grid-column:1/-1;align-items:center;padding:22px 8px;border:0;color:var(--muted);text-align:center}
 }
+
+/* Pulido de la navegación lateral. */
+.sidebar-brand { gap: 0; }
+.sidebar nav small {
+  padding: 17px 12px 6px;
+  color: #718079;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1.4;
+}
+.sidebar nav small:first-child { padding-top: 17px; }
+.sidebar .profile {
+  margin: 10px 12px 12px;
+  padding: 10px 9px;
+  grid-template-columns: 36px minmax(0, 1fr) 34px;
+  border: 1px solid #dce5e1;
+  border-radius: 12px;
+  background: #fbfcfb;
+  box-shadow: 0 2px 8px rgba(24, 32, 51, .035);
+}
+.sidebar .profile .avatar { background: #e7efec; color: #426258; }
+.sidebar .profile strong { color: #263a34; }
+.sidebar .profile small { color: #7b8984; }
+.sidebar .profile button { border-radius: 8px; }
