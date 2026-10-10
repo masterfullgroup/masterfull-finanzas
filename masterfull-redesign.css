@@ -264,7 +264,7 @@ select option:checked, select option:focus, select option:hover { background-col
   transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 .sidebar nav .nav-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.sidebar nav a:hover { border-color: rgba(176, 203, 221, .1); background: rgba(215, 235, 247, .07); color: #fff; }
+.sidebar nav a:hover { transform: none; border-color: rgba(176, 203, 221, .1); background: rgba(215, 235, 247, .07); color: #fff; }
 .sidebar nav a:hover .nav-icon { border-color: rgba(16, 185, 129, .36); background: rgba(16, 185, 129, .1); color: #6ce1b8; }
 .sidebar nav a.active { border-color: rgba(16, 185, 129, .14); background: rgba(16, 185, 129, .17); color: #f7fffb; font-weight: 700; }
 .sidebar nav a.active::before { background: #31d49f; }
