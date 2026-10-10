@@ -13,29 +13,29 @@ const PAGE_SIZE = 50;
 const REFERENCE_LIMIT = 100;
 const REPORT_LIMIT = 500;
 const NAV = [
-  ["PRINCIPAL"], ["resumen", "dashboard", "Resumen"], ["movimientos", "transfer", "Movimientos"],
-  ["operaciones"], ["transferencias", "transfer", "Transferencias"], ["pagosTarjeta", "card", "Pagos de tarjetas"],
-  ["GESTIÓN"], ["cuentas", "wallet", "Cuentas"], ["personas", "users", "Personas"],
-  ["propietarios", "users", "Titulares"], ["instituciones", "wallet", "Instituciones"], ["tarjetas", "card", "Tarjetas"],
-  ["categorias", "tag", "Categorías"], ["presupuestos", "budget", "Presupuestos"],
-  ["PLANIFICACIÓN"], ["metas", "target", "Metas de ahorro"], ["deudas", "debt", "Deudas"],
+  ["PRINCIPAL"], ["resumen", "home", "Dashboard"],
+  ["movimientos", "income", "Ingresos", "INGRESO"], ["movimientos", "expense", "Gastos", "GASTO"],
+  ["GESTIÓN"], ["cuentas", "wallet", "Cuentas"], ["tarjetas", "card", "Tarjetas"], ["deudas", "debt", "Deudas"],
+  ["movimientos", "transfer", "Movimientos"], ["transferencias", "transfer", "Transferencias"], ["pagosTarjeta", "card", "Pagos de tarjetas"],
+  ["personas", "users", "Personas"], ["propietarios", "users", "Titulares"], ["instituciones", "wallet", "Instituciones"], ["categorias", "tag", "Categorías"],
+  ["PLANIFICACIÓN"], ["presupuestos", "budget", "Presupuestos"], ["metas", "target", "Metas de ahorro"],
   ["recurrentes", "repeat", "Gastos recurrentes"], ["flujo", "calendar", "Flujo mensual"], ["reportes", "chart", "Reportes"],
   ["CUENTA"], ["perfil", "users", "Mi perfil"],
 ];
 
 const META = {
-  personas: { title: "Personas", eye: "PERFILES DEL HOGAR", singular: "persona" },
+  personas: { title: "Personas", eye: "PERFILES DEL HOGAR", singular: "persona", description: "Organiza las finanzas de tu hogar junto a sus integrantes." },
   propietarios: { title: "Titulares", eye: "PERSONAS, EMPRESAS Y CUENTAS COMPARTIDAS", singular: "titular" },
   instituciones: { title: "Instituciones financieras", eye: "BANCOS Y ENTIDADES", singular: "institución" },
-  cuentas: { title: "Cuentas", eye: "TU DINERO DISPONIBLE", singular: "cuenta" },
-  tarjetas: { title: "Tarjetas", eye: "CRÉDITO Y PAGOS", singular: "tarjeta" },
+  cuentas: { title: "Cuentas", eye: "TU DINERO DISPONIBLE", singular: "cuenta", description: "Consulta tus saldos y organiza las cuentas que registraste." },
+  tarjetas: { title: "Tarjetas", eye: "CRÉDITO Y PAGOS", singular: "tarjeta", description: "Administra tus tarjetas y revisa el crédito disponible." },
   categorias: { title: "Categorías", eye: "ORGANIZACIÓN", singular: "categoría" },
-  movimientos: { title: "Movimientos", eye: "INGRESOS Y EGRESOS", singular: "movimiento" },
+  movimientos: { title: "Movimientos", eye: "INGRESOS Y EGRESOS", singular: "movimiento", description: "Revisa y organiza los ingresos y gastos registrados." },
   transferencias: { title: "Transferencias", eye: "ENTRE TUS CUENTAS", singular: "transferencia" },
   pagosTarjeta: { title: "Pagos de tarjetas", eye: "PAGOS DE DEUDA", singular: "pago de tarjeta" },
-  presupuestos: { title: "Presupuestos", eye: "CONTROL MENSUAL", singular: "presupuesto" },
-  metas: { title: "Metas de ahorro", eye: "PLANIFICACIÓN", singular: "meta" },
-  deudas: { title: "Deudas", eye: "COMPROMISOS", singular: "deuda" },
+  presupuestos: { title: "Presupuestos", eye: "CONTROL MENSUAL", singular: "presupuesto", description: "Compara tus gastos del mes con los límites que definiste." },
+  metas: { title: "Metas de ahorro", eye: "PLANIFICACIÓN", singular: "meta", description: "Sigue el avance de tus objetivos de ahorro." },
+  deudas: { title: "Deudas", eye: "COMPROMISOS", singular: "deuda", description: "Consulta los saldos pendientes de tus deudas registradas." },
   recurrentes: { title: "Gastos recurrentes", eye: "PAGOS PROGRAMADOS", singular: "gasto recurrente" },
 };
 
@@ -98,7 +98,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   user: null, profile: {}, page: "resumen", data: {}, entityCursor: null, entityHasMore: false,
   reportRows: [], reportCursor: null, reportHasMore: false, editing: null, filter: {}, busy: false,
-  accountFilters: {}, movementAccountFilter: null,
+  accountFilters: {}, movementAccountFilter: null, dashboardMonth: null, dashboardRange: 6,
 };
 let services = null;
 let authMode = "login";
@@ -128,21 +128,116 @@ function currentMonth() { return todayISO().slice(0, 7); }
 function newId() { return crypto.randomUUID(); }
 
 function navHTML() {
-  return NAV.map((item) => item.length === 1
-    ? `<small>${esc(item[0])}</small>`
-    : `<a href="#${item[0]}" data-page="${item[0]}"><span class="nav-icon"><svg aria-hidden="true"><use href="#i-${item[1]}"></use></svg></span>${esc(item[2])}</a>`).join("");
+  return NAV.map((item) => {
+    if (item.length === 1) return `<small>${esc(item[0])}</small>`;
+    const [page, iconName, label, movementType] = item;
+    return `<a href="#${page}" data-page="${page}" ${movementType ? `data-movement-type="${movementType}"` : ""}><span class="nav-icon"><svg aria-hidden="true"><use href="#i-${iconName}"></use></svg></span><span>${esc(label)}</span></a>`;
+  }).join("");
+}
+
+function applyTheme(theme, persist = false) {
+  document.documentElement.dataset.theme = theme;
+  const toggle = $("#theme-toggle");
+  if (toggle) {
+    const nextTheme = theme === "dark" ? "claro" : "oscuro";
+    toggle.setAttribute("aria-label", `Activar tema ${nextTheme}`);
+    toggle.title = `Activar tema ${nextTheme}`;
+  }
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = theme === "dark" ? "#0b1420" : "#081827";
+  if (persist) {
+    try { localStorage.setItem("masterfull-theme", theme); } catch { /* La preferencia sigue activa en esta sesión. */ }
+  }
+}
+
+function initTheme() {
+  let theme = "light";
+  try {
+    const savedTheme = localStorage.getItem("masterfull-theme");
+    if (["light", "dark"].includes(savedTheme)) theme = savedTheme;
+  } catch { /* El tema claro es el valor inicial seguro. */ }
+  applyTheme(theme);
+}
+
+function closeProfileMenu() {
+  const menu = $("#profile-menu");
+  const trigger = $("#profile-menu-trigger");
+  if (!menu || !trigger) return;
+  menu.hidden = true;
+  trigger.setAttribute("aria-expanded", "false");
+}
+
+function closeGlobalSearch() {
+  const input = $("#global-search-input");
+  const results = $("#global-search-results");
+  if (!input || !results) return;
+  results.hidden = true;
+  input.setAttribute("aria-expanded", "false");
 }
 
 function bind() {
+  initTheme();
   $("#navigation").innerHTML = navHTML();
   $("#today").textContent = new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeZone: APP_TIME_ZONE }).format(new Date());
   window.addEventListener("hashchange", () => void route());
+  $("#navigation").addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-page]");
+    if (!link) return;
+    if (link.dataset.movementType) state.filter = { equals: { tipo: link.dataset.movementType } };
+    else if (link.dataset.page === "movimientos") state.filter = {};
+    closeSidebar();
+    if (location.hash === link.getAttribute("href")) void route();
+  });
+  $("#sidebar-toggle").addEventListener("click", toggleSidebar);
+  $("#theme-toggle").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+  $("#profile-menu-trigger").addEventListener("click", () => {
+    const menu = $("#profile-menu");
+    const open = menu.hidden;
+    menu.hidden = !open;
+    $("#profile-menu-trigger").setAttribute("aria-expanded", String(open));
+  });
+  $("#profile-menu").addEventListener("click", (event) => {
+    if (event.target.closest("a")) closeProfileMenu();
+  });
+  $("#profile-menu-logout").addEventListener("click", () => services.authSdk.signOut(services.auth));
+  $("#global-search-input").addEventListener("input", renderGlobalSearch);
+  $("#global-search-input").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeGlobalSearch();
+    if (event.key === "Enter") $("#global-search-results [data-search-entity]")?.click();
+  });
+  $("#global-search-results").addEventListener("click", (event) => {
+    const result = event.target.closest("[data-search-entity][data-search-id]");
+    if (!result) return;
+    const row = (state.data[result.dataset.searchEntity] || []).find((item) => item.id === result.dataset.searchId);
+    if (row) openForm(result.dataset.searchEntity, row);
+    closeGlobalSearch();
+    $("#global-search-input").value = "";
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".user-menu-wrap")) closeProfileMenu();
+    if (!event.target.closest(".global-search")) closeGlobalSearch();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "/" && !event.ctrlKey && !event.metaKey && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+      event.preventDefault();
+      $("#global-search-input").focus();
+    }
+  });
+  $("#dashboard-month").addEventListener("change", (event) => {
+    state.dashboardMonth = event.target.value || currentMonth();
+    if (state.page === "resumen") void renderDashboard();
+  });
   $("#auth-form").addEventListener("submit", submitAuth);
   $("#auth-toggle").addEventListener("click", toggleAuth);
   $("#forgot-password").addEventListener("click", resetPassword);
   $("#logout").addEventListener("click", () => services.authSdk.signOut(services.auth));
   $("#add-main").addEventListener("click", () => openForm(state.page));
   $("#content").addEventListener("click", (event) => void contentClick(event));
+  $("#content").addEventListener("change", (event) => {
+    if (!event.target.matches("#chart-range")) return;
+    state.dashboardRange = Number(event.target.value);
+    if (state.page === "resumen") void renderDashboard();
+  });
   $("#content").addEventListener("submit", (event) => {
     if (event.target.matches("[data-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
     if (event.target.matches("[data-account-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
@@ -150,6 +245,18 @@ function bind() {
   });
   $("#record-form").addEventListener("submit", (event) => void saveForm(event));
   $("#record-form").addEventListener("change", (event) => updateFormFlow(event.target));
+}
+
+function toggleSidebar() {
+  const open = $("#app").classList.toggle("sidebar-open");
+  $("#sidebar-toggle").setAttribute("aria-expanded", String(open));
+  $("#sidebar-toggle").setAttribute("aria-label", open ? "Cerrar navegación" : "Abrir navegación");
+}
+
+function closeSidebar() {
+  $("#app").classList.remove("sidebar-open");
+  $("#sidebar-toggle").setAttribute("aria-expanded", "false");
+  $("#sidebar-toggle").setAttribute("aria-label", "Abrir navegación");
 }
 
 function showAuth(setupMessage = "") {
@@ -171,6 +278,8 @@ function showApp() {
   const displayName = state.profile.displayName || state.user.displayName || state.user.email?.split("@")[0] || "Mi cuenta";
   $("#profile-name").textContent = displayName;
   $("#avatar").textContent = displayName.trim()[0]?.toUpperCase() || "M";
+  $("#profile-name-top").textContent = displayName;
+  $("#avatar-top").textContent = displayName.trim()[0]?.toUpperCase() || "M";
   $("#profile-mode").textContent = "Datos protegidos";
 }
 
@@ -245,10 +354,27 @@ async function route() {
   if (state.page === "dashboard") state.page = "resumen";
   if (state.page === "personas_lista") state.page = "personas";
   if (!["resumen", "flujo", "reportes", "perfil", ...Object.keys(FIELDS)].includes(state.page)) state.page = "resumen";
-  document.querySelectorAll("#navigation a").forEach((link) => link.classList.toggle("active", link.dataset.page === state.page));
-  const info = META[state.page] || { title: state.page === "perfil" ? "Mi perfil" : state.page === "flujo" ? "Flujo mensual" : state.page === "reportes" ? "Reportes" : "Tu dinero, en contexto", eye: "PANEL FINANCIERO" };
-  $("#page-title").textContent = info.title;
+  const movementType = state.filter.equals?.tipo || "";
+  document.querySelectorAll("#navigation a").forEach((link) => {
+    const matchingType = link.dataset.movementType ? link.dataset.movementType === movementType : link.dataset.page === "movimientos" ? !movementType : true;
+    link.classList.toggle("active", link.dataset.page === state.page && matchingType);
+  });
+  const fallbackTitles = { flujo: "Flujo mensual", reportes: "Reportes", perfil: "Mi perfil" };
+  const info = META[state.page] || { title: fallbackTitles[state.page] || "Finanzas", eye: "TU ESPACIO FINANCIERO" };
+  if (state.page === "resumen") {
+    const name = state.profile.displayName || state.user?.displayName || state.user?.email?.split("@")[0] || "";
+    const firstName = name.trim().split(/\s+/)[0];
+    $("#page-title").textContent = firstName ? `Hola, ${firstName} 👋` : "Dashboard";
+    $("#page-description").textContent = "Aquí tienes un resumen de tu situación financiera.";
+  } else {
+    $("#page-title").textContent = info.title;
+    $("#page-description").textContent = info.description || "";
+  }
   $("#page-eyebrow").textContent = info.eye;
+  $("#dashboard-period-control").classList.toggle("hidden", state.page !== "resumen");
+  $("#today").classList.toggle("hidden", state.page === "resumen");
+  $("#dashboard-month").value = state.dashboardMonth || currentMonth();
+  closeProfileMenu();
   $("#add-main").classList.toggle("hidden", !FIELDS[state.page]);
   state.entityCursor = null;
   state.entityHasMore = false;
@@ -259,35 +385,151 @@ async function route() {
   return loadEntityPage(false);
 }
 
+function renderGlobalSearch() {
+  const input = $("#global-search-input");
+  const results = $("#global-search-results");
+  const query = input.value.trim().toLocaleLowerCase("es-PE");
+  if (!state.user || query.length < 2) {
+    closeGlobalSearch();
+    return;
+  }
+  const matches = [];
+  for (const [entity, rows] of Object.entries(state.data)) {
+    if (!FIELDS[entity]) continue;
+    for (const row of rows) {
+      const title = row.descripcion || row.nombre || row.acreedor || row.servicio || row.entidad || row.email || optionLabel(row.tipo) || "Registro";
+      const searchable = [title, ...(LIST_FIELDS[entity] || []).map((field) => {
+        const value = row[field];
+        return field.endsWith("_id") ? relationLabel(field, value) : value;
+      })].filter((value) => ["string", "number"].includes(typeof value)).join(" ").toLocaleLowerCase("es-PE");
+      if (!searchable.includes(query)) continue;
+      const subtitle = [META[entity]?.title || "Registro", row.fecha || row.mes?.slice(0, 7)].filter(Boolean).join(" · ");
+      matches.push(`<button class="search-result" type="button" role="option" data-search-entity="${esc(entity)}" data-search-id="${esc(row.id)}"><span class="search-result-icon"><svg aria-hidden="true"><use href="#i-${entity === "movimientos" ? row.tipo === "INGRESO" ? "income" : "expense" : entity === "cuentas" ? "wallet" : entity === "tarjetas" ? "card" : "chart"}"></use></svg></span><span class="search-result-copy"><strong>${esc(title)}</strong><small>${esc(subtitle)}</small></span><span class="search-result-action">Editar</span></button>`);
+      if (matches.length >= 6) break;
+    }
+    if (matches.length >= 6) break;
+  }
+  results.innerHTML = matches.length
+    ? `<p class="search-results-label">Coincidencias en los registros cargados</p>${matches.join("")}`
+    : `<p class="search-empty">No encontramos coincidencias en los datos cargados.</p>`;
+  results.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+}
+
 function pageLoading(message = "Cargando…") {
   $("#content").innerHTML = `<section class="panel"><p class="empty">${esc(message)}</p></section>`;
+}
+
+function trendMarkup(current, previous, kind) {
+  if (!previous) return `<span class="metric-trend is-muted">Sin comparación previa</span>`;
+  const delta = current - previous;
+  if (!delta) return `<span class="metric-trend is-muted">Sin variación vs. mes anterior</span>`;
+  const change = Math.round(Math.abs(delta) / Math.abs(previous) * 100);
+  const favorable = kind === "expense" ? delta < 0 : delta > 0;
+  const direction = delta > 0 ? "↑" : "↓";
+  return `<span class="metric-trend ${favorable ? "is-positive" : "is-negative"}" aria-label="${favorable ? "Cambio favorable" : "Cambio desfavorable"} del ${change} por ciento respecto al mes anterior"><span aria-hidden="true">${direction}</span>${change}% <small>vs. mes anterior</small></span>`;
+}
+
+function dashboardMetric(label, valueMinor, currency, iconName, tone, detail, trend = "") {
+  return `<article class="metric-card"><span class="metric-icon is-${tone}"><svg aria-hidden="true"><use href="#i-${iconName}"></use></svg></span><div class="metric-copy"><span class="metric-label">${esc(label)}</span><strong class="metric-value ${tone === "expense" || tone === "saving" && valueMinor < 0 ? "is-negative" : ""}">${esc(moneyFromMinor(valueMinor, currency))}</strong><span class="metric-detail">${esc(detail)}</span>${trend}</div></article>`;
+}
+
+function axisMoney(valueMinor, currency) {
+  const value = fromMinorUnits(valueMinor, currency);
+  const digits = ["JPY", "CLP", "COP"].includes(currency) ? 0 : 0;
+  const amount = new Intl.NumberFormat("es-PE", { maximumFractionDigits: digits, notation: Math.abs(value) >= 100000 ? "compact" : "standard" }).format(value);
+  return `${CURRENCY_SYMBOLS[currency] || currency} ${amount}`;
+}
+
+function financialChartSvg(history, currency) {
+  const width = 720;
+  const height = 262;
+  const margin = { top: 18, right: 18, bottom: 38, left: 78 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  let cumulative = 0;
+  const rows = history.map((row) => {
+    cumulative += row.incomeMinor - row.expenseMinor;
+    return { ...row, cumulativeMinor: cumulative };
+  });
+  const values = rows.flatMap((row) => [row.incomeMinor, row.expenseMinor, row.cumulativeMinor]);
+  const min = Math.min(0, ...values);
+  const max = Math.max(0, ...values);
+  const range = Math.max(max - min, 100);
+  const y = (value) => margin.top + ((max - value) / range) * plotHeight;
+  const zeroY = y(0);
+  const step = plotWidth / Math.max(rows.length, 1);
+  const barWidth = Math.min(16, step * 0.2);
+  const ticks = Array.from({ length: 5 }, (_, index) => min + (range * index) / 4);
+  const grid = ticks.map((value) => `<g><line x1="${margin.left}" y1="${y(value)}" x2="${width - margin.right}" y2="${y(value)}" class="chart-gridline"/><text x="${margin.left - 12}" y="${y(value) + 4}" text-anchor="end" class="chart-axis-label">${esc(axisMoney(value, currency))}</text></g>`).join("");
+  const bars = rows.map((row, index) => {
+    const center = margin.left + step * (index + 0.5);
+    const incomeY = y(row.incomeMinor);
+    const expenseY = y(row.expenseMinor);
+    return `<rect x="${center - barWidth - 2}" y="${Math.min(incomeY, zeroY)}" width="${barWidth}" height="${Math.max(Math.abs(zeroY - incomeY), 1)}" rx="3" class="chart-bar-income"><title>Ingresos ${esc(row.month)}: ${esc(moneyFromMinor(row.incomeMinor, currency))}</title></rect><rect x="${center + 2}" y="${Math.min(expenseY, zeroY)}" width="${barWidth}" height="${Math.max(Math.abs(zeroY - expenseY), 1)}" rx="3" class="chart-bar-expense"><title>Gastos ${esc(row.month)}: ${esc(moneyFromMinor(row.expenseMinor, currency))}</title></rect><text x="${center}" y="${height - 10}" text-anchor="middle" class="chart-axis-label">${esc(new Intl.DateTimeFormat("es-PE", { month: "short", timeZone: APP_TIME_ZONE }).format(new Date(`${row.month}-01T12:00:00`)).replace(".", ""))}</text>`;
+  }).join("");
+  const points = rows.map((row, index) => ({ x: margin.left + step * (index + 0.5), y: y(row.cumulativeMinor), value: row.cumulativeMinor }));
+  const line = points.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
+  const circles = points.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3.5" class="chart-line-dot"><title>Balance acumulado del periodo hasta ${esc(rows[index].month)}: ${esc(moneyFromMinor(point.value, currency))}</title></circle>`).join("");
+  return `<svg class="financial-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ingresos, gastos y balance acumulado del periodo en ${esc(currency)}"><title>Evolución de ingresos, gastos y balance acumulado</title><desc>Comparación mensual de ingresos y gastos. El balance acumulado suma ingresos menos gastos desde el primer mes visible; no es el saldo bancario.</desc>${grid}<line x1="${margin.left}" y1="${zeroY}" x2="${width - margin.right}" y2="${zeroY}" class="chart-zero-line"/><g>${bars}</g><path d="${line}" class="chart-net-line"/>${circles}</svg>`;
+}
+
+function donutMarkup(categories, categoryName, currency, sampled) {
+  const palette = ["#10B981", "#3B82F6", "#F59E0B", "#A78BFA", "#EF6A5B", "#14B8A6"];
+  const ranked = categories.sort((a, b) => b[1] - a[1]);
+  const visible = ranked.slice(0, 4).map(([id, amount]) => [categoryName(id), amount]);
+  const others = ranked.slice(4).reduce((sum, [, amount]) => sum + amount, 0);
+  if (others > 0) visible.push(["Otras categorías", others]);
+  const total = visible.reduce((sum, [, amount]) => sum + amount, 0);
+  if (!total) return `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-chart"></use></svg></span><strong>Aún no hay gastos para analizar</strong><p>Los gastos que registres aparecerán aquí.</p></div>`;
+  let offset = 0;
+  const stops = visible.map(([, amount], index) => {
+    const portion = amount / total * 100;
+    const stop = `${palette[index % palette.length]} ${offset.toFixed(2)}% ${(offset + portion).toFixed(2)}%`;
+    offset += portion;
+    return stop;
+  }).join(",");
+  const legend = visible.map(([name, amount], index) => `<li><span class="donut-label"><i style="--legend-color:${palette[index % palette.length]}"></i>${esc(name)}</span><strong>${Math.round(amount / total * 100)}%</strong></li>`).join("");
+  return `<div class="donut-content"><div class="donut-chart" style="--donut-stops:conic-gradient(${stops})" role="img" aria-label="Distribución de gastos registrados: ${esc(moneyFromMinor(total, currency))}"><div class="donut-center"><strong>${esc(moneyFromMinor(total, currency))}</strong><span>${sampled ? "Muestra" : "Total del periodo"}</span></div></div><ul class="donut-legend">${legend}</ul></div>${sampled ? `<p class="sample-note">Distribución calculada con los 100 movimientos más recientes del periodo.</p>` : ""}`;
+}
+
+function shortDate(value) {
+  if (!value) return "—";
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short", timeZone: APP_TIME_ZONE }).format(date).replace(".", "");
 }
 
 async function renderDashboard() {
   pageLoading();
   try {
-    const { start, end } = monthBounds(currentMonth());
-    const [totals, recent, accountBalances, budgetPage, goalPage, debtPage] = await Promise.all([
-      monthTotals(state.user.uid, start, end, state.profile.currency || "PEN"),
-      listPage(state.user.uid, "movimientos", { limit: 100, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: state.profile.currency || "PEN" } }),
-      Promise.resolve(state.data.cuentas || []),
-      listPage(state.user.uid, "presupuestos", { limit: 100, orderField: "mes", direction: "desc", equals: { mes: `${currentMonth()}-01`, moneda: state.profile.currency || "PEN" } }),
+    const currency = state.profile.currency || "PEN";
+    const selectedMonth = state.dashboardMonth || currentMonth();
+    const range = [6, 12].includes(Number(state.dashboardRange)) ? Number(state.dashboardRange) : 6;
+    state.dashboardRange = range;
+    const months = Array.from({ length: range }, (_, index) => shiftMonth(selectedMonth, index - range + 1));
+    const { start, end } = monthBounds(selectedMonth);
+    const [monthlyHistory, recent, budgetPage, goalPage, debtPage] = await Promise.all([
+      Promise.all(months.map(async (month) => {
+        const bounds = monthBounds(month);
+        return { month, ...await monthTotals(state.user.uid, bounds.start, bounds.end, currency) };
+      })),
+      listPage(state.user.uid, "movimientos", { limit: 100, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: currency } }),
+      listPage(state.user.uid, "presupuestos", { limit: 100, orderField: "mes", direction: "desc", equals: { mes: `${selectedMonth}-01`, moneda: currency } }),
       listPage(state.user.uid, "metas", { limit: 4, orderField: "createdAt", direction: "desc" }),
       listPage(state.user.uid, "deudas", { limit: 100, orderField: "createdAt", direction: "desc" }),
     ]);
-    const currency = state.profile.currency || "PEN";
-    const income = fromMinorUnits(totals.incomeMinor, currency);
-    const expense = fromMinorUnits(totals.expenseMinor, currency);
-    const balance = income - expense;
-    const activeAccounts = accountBalances.filter((item) => item.estado !== "ARCHIVADA");
-    const accounts = activeAccounts.filter((item) => (item.moneda || "PEN") === currency).reduce((sum, item) => sum + fromMinorUnits(Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0), currency), 0);
-    const rate = income ? Math.round((balance / income) * 100) : 0;
+    const totals = monthlyHistory.at(-1) || { incomeMinor: 0, expenseMinor: 0 };
+    const previous = monthlyHistory.at(-2) || { incomeMinor: 0, expenseMinor: 0 };
+    const savingsMinor = totals.incomeMinor - totals.expenseMinor;
+    const activeAccounts = (state.data.cuentas || []).filter((item) => !["ARCHIVADA", "INACTIVA"].includes(item.estado));
+    const accountBalanceMinor = activeAccounts.filter((item) => (item.moneda || "PEN") === currency)
+      .reduce((sum, item) => sum + Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0), 0);
     const monthExpenses = recent.rows.filter((movement) => movement.tipo === "GASTO");
     const categoryTotals = monthExpenses.reduce((acc, movement) => {
-      acc[movement.categoria_id] = (acc[movement.categoria_id] || 0) + Number(movement.montoMinor || 0);
+      acc[movement.categoria_id || "sin-categoria"] = (acc[movement.categoria_id || "sin-categoria"] || 0) + Number(movement.montoMinor || 0);
       return acc;
     }, {});
-    const topCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const topCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
     const debtByCurrency = debtPage.rows.reduce((groups, debt) => {
       const code = debt.moneda || "PEN";
       groups[code] = (groups[code] || 0) + Math.max(0, Number(debt.montoTotalMinor || 0) - Number(debt.montoPagadoMinor || 0));
@@ -297,21 +539,58 @@ async function renderDashboard() {
       ...budget,
       spentMinor: await categoryExpenseTotal(state.user.uid, budget.categoria_id, start, end, currency),
     })));
-    const categoryName = (id) => state.data.categorias.find((item) => item.id === id)?.nombre || "Sin categoría";
+    const categoryName = (id) => state.data.categorias.find((item) => item.id === id)?.nombre || (id === "sin-categoria" ? "Sin categoría" : "Categoría" );
+    const monthTitle = new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric", timeZone: APP_TIME_ZONE }).format(new Date(`${selectedMonth}-01T12:00:00`));
+    state.data.movimientos = recent.rows;
+
+    const metricCards = [
+      dashboardMetric("Saldo total", accountBalanceMinor, currency, "wallet", "balance", `${activeAccounts.filter((item) => (item.moneda || "PEN") === currency).length} cuentas · ${currency}`),
+      dashboardMetric("Ingresos", totals.incomeMinor, currency, "income", "income", monthTitle, trendMarkup(totals.incomeMinor, previous.incomeMinor, "income")),
+      dashboardMetric("Gastos", totals.expenseMinor, currency, "expense", "expense", monthTitle, trendMarkup(totals.expenseMinor, previous.expenseMinor, "expense")),
+      dashboardMetric("Ahorro del periodo", savingsMinor, currency, "piggy", "saving", totals.incomeMinor ? `${Math.round(savingsMinor / totals.incomeMinor * 100)}% de tus ingresos` : "Sin ingresos registrados en este periodo", trendMarkup(savingsMinor, previous.incomeMinor - previous.expenseMinor, "saving")),
+    ].join("");
+
+    const chartRows = monthlyHistory.map((item) => ({ ...item, cumulativeMinor: 0 }));
+    const chartRowsLabel = monthlyHistory.length === 12 ? "Últimos 12 meses" : "Últimos 6 meses";
+    const chartRowsSvg = financialChartSvg(chartRows, currency);
+    const recentRows = recent.rows.slice(0, 5).map((item) => {
+      const income = item.tipo === "INGRESO";
+      const typeLabel = income ? "Ingreso" : "Gasto";
+      const description = item.descripcion || categoryName(item.categoria_id);
+      return `<tr><td class="recent-date">${esc(shortDate(item.fecha))}</td><td><span class="recent-description"><i class="movement-type-icon ${income ? "is-income" : "is-expense"}"><svg aria-hidden="true"><use href="#i-${income ? "income" : "expense"}"></use></svg></i><strong>${esc(description)}</strong></span></td><td class="recent-category">${esc(categoryName(item.categoria_id))}</td><td class="recent-amount ${income ? "is-income" : "is-expense"}">${income ? "+" : "−"}${esc(moneyFromMinor(item.montoMinor, item.moneda))}</td><td><span class="movement-badge ${income ? "is-income" : "is-expense"}">${typeLabel}</span></td><td><div class="recent-actions"><button type="button" data-edit="movimientos" data-id="${esc(item.id)}">Editar</button><button type="button" class="is-danger" data-delete="movimientos" data-id="${esc(item.id)}">Eliminar</button></div></td></tr>`;
+    }).join("");
+    const accounts = activeAccounts.filter((item) => (item.moneda || "PEN") === currency).slice(0, 4);
+    const accountRows = accounts.map((item) => `<div class="compact-account"><span class="compact-account-icon"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></span><span class="compact-account-copy"><strong>${esc(item.nombre || "Cuenta")}</strong><small>${esc(optionLabel(item.tipo))}${item.institucion_id ? ` · ${esc(relationLabel("institucion_id", item.institucion_id))}` : ""}</small></span><strong class="compact-account-balance">${esc(moneyFromMinor(item.saldoActualMinor ?? item.saldoInicialMinor, item.moneda || currency))}</strong></div>`).join("");
+    const cards = (state.data.tarjetas || []).slice(0, 2).map((item) => {
+      const credit = item.tipo === "CREDITO";
+      const amount = credit ? Math.max(0, Number(item.lineaCreditoMinor || 0) - Number(item.utilizadoMinor ?? item.saldoInicialUsadoMinor ?? 0)) : null;
+      const linkedAccount = (state.data.cuentas || []).find((account) => account.id === item.cuenta_id);
+      const details = credit ? `Disponible · ${moneyFromMinor(amount, item.moneda || currency)}` : linkedAccount ? `Saldo vinculado · ${moneyFromMinor(linkedAccount.saldoActualMinor ?? linkedAccount.saldoInicialMinor, linkedAccount.moneda || currency)}` : "Tarjeta de débito";
+      return `<article class="bank-card-preview"><div class="bank-card-top"><span>MASTERFULL <small>FINANZAS</small></span><svg aria-hidden="true"><use href="#i-chip"></use></svg></div><strong class="bank-card-name">${esc(item.nombre || optionLabel(item.entidad) || "Tarjeta")}</strong><div class="bank-card-bottom"><span>${esc(credit ? "Crédito" : "Débito")}${item.entidad ? ` · ${esc(optionLabel(item.entidad))}` : ""}</span><strong>${esc(details)}</strong></div><span class="bank-card-security">Identificación protegida</span></article>`;
+    }).join("");
+    const budgetsMarkup = budgets.length ? budgets.slice(0, 4).map((item) => `<div class="budget-line"><div class="budget-line-head"><span>${esc(categoryName(item.categoria_id))}</span><strong>${esc(moneyFromMinor(item.spentMinor, currency))}<small> / ${esc(moneyFromMinor(item.limiteMinor, currency))}</small></strong></div><progress max="${Math.max(item.limiteMinor, 1)}" value="${Math.min(item.spentMinor, item.limiteMinor)}" aria-label="${esc(categoryName(item.categoria_id))}: ${esc(moneyFromMinor(item.spentMinor, currency))} de ${esc(moneyFromMinor(item.limiteMinor, currency))}"></progress></div>`).join("") : `<div class="dashboard-empty inline-empty"><strong>Aún no tienes presupuestos</strong><p>Define un límite por categoría para controlar tus gastos.</p><a class="link-button" href="#presupuestos">Configurar presupuesto</a></div>`;
+    const goalsMarkup = goalPage.rows.length ? goalPage.rows.map((goal) => `<div class="budget-line"><div class="budget-line-head"><span>${esc(goal.nombre)}</span><strong>${esc(money(goal.monto_actual, goal.moneda))}<small> / ${esc(money(goal.monto_objetivo, goal.moneda))}</small></strong></div><progress max="${Math.max(Number(goal.monto_objetivo), 1)}" value="${Math.min(Number(goal.monto_actual), Number(goal.monto_objetivo))}" aria-label="${esc(goal.nombre)}"></progress></div>`).join("") : `<div class="dashboard-empty inline-empty"><strong>Sin metas de ahorro</strong><p>Cuando registres una meta, podrás seguir su avance aquí.</p><a class="link-button" href="#metas">Ver metas</a></div>`;
+    const debtMarkup = Object.entries(debtByCurrency).length
+      ? Object.entries(debtByCurrency).map(([code, amount]) => `<div class="debt-total-row"><span>Saldo pendiente · ${esc(code)}</span><strong>${esc(moneyFromMinor(amount, code))}</strong></div>`).join("")
+      : `<div class="dashboard-empty inline-empty"><strong>Sin deudas registradas</strong><p>Las deudas que agregues se resumirán aquí.</p><a class="link-button" href="#deudas">Ver deudas</a></div>`;
+
     $("#content").innerHTML = `
-      <section class="summary-grid">
-        <article class="hero-card"><div class="hero-head"><div><span class="overline">Posición actual</span><h2>Disponible en tus cuentas</h2></div><span class="date-chip">${esc(currentMonth())}</span></div>
-          <div class="main-balance"><small>${esc(CURRENCY_SYMBOLS[currency] || currency)}</small>${accounts.toLocaleString("es-PE", { minimumFractionDigits: ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2, maximumFractionDigits: ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2 })}</div>
-          <p class="caption">Saldo de ${activeAccounts.filter((item) => (item.moneda || "PEN") === currency).length} cuentas en ${esc(currency)}. Otras monedas se consultan en Cuentas.</p>
-          <div class="cashflow"><div><span>INGRESOS DEL MES</span><strong class="positive">+ ${money(income)}</strong></div><div><span>EGRESOS DEL MES</span><strong class="negative">− ${money(expense)}</strong></div><div><span>BALANCE MENSUAL</span><strong class="${balance >= 0 ? "positive" : "negative"}">${money(balance)}</strong></div></div>
-        </article>
-        <aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income ? `Conservaste el ${rate}% de tus ingresos.` : "Empieza registrando un movimiento."}</h2><p>${balance >= 0 ? "Tu balance mensual es positivo." : "Tus egresos superaron lo ingresado."}</p><div class="stat-card"><span>DEUDA PENDIENTE</span>${Object.entries(debtByCurrency).length ? Object.entries(debtByCurrency).map(([code, amount]) => `<strong>${moneyFromMinor(amount, code)}</strong>`).join("") : `<strong>${money(0, currency)}</strong>`}</div></aside>
-      </section>
-      <section class="dashboard-columns"><article class="panel"><div class="section-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(currentMonth())} · hasta 100 registros para el resumen</p></div><a class="link-button" href="#movimientos">Ver movimientos</a></div>${recent.rows.slice(0, 6).map((item) => `<div class="transaction-row"><span class="transaction-icon">${item.tipo === "INGRESO" ? "↗" : "↘"}</span><span class="transaction-info"><strong>${esc(item.descripcion || categoryName(item.categoria_id))}</strong><small>${esc(item.fecha)} · ${esc(categoryName(item.categoria_id))}</small></span><strong class="amount ${item.tipo === "INGRESO" ? "positive" : "negative"}">${item.tipo === "INGRESO" ? "+" : "−"}${moneyFromMinor(item.montoMinor, item.moneda)}</strong></div>`).join("") || `<p class="empty">Aún no tienes movimientos este mes.</p>`}</article>
-        <article class="panel"><div class="section-head"><div><h2>Gastos por categoría</h2><p class="caption">Este mes, en tus registros recientes</p></div></div>${topCategories.map(([id, amount]) => `<div class="category-row"><div><span>${esc(categoryName(id))}</span><strong>${moneyFromMinor(amount)}</strong></div><progress max="${Math.max(...topCategories.map(([, total]) => total), 1)}" value="${amount}"></progress></div>`).join("") || `<p class="empty">Registra gastos para ver el análisis.</p>`}</article></section>
-      ${budgets.length ? `<section class="panel"><div class="section-head"><div><h2>Presupuestos del mes</h2></div><a class="link-button" href="#presupuestos">Gestionar</a></div>${budgets.map((item) => `<div class="category-row"><div><span>${esc(categoryName(item.categoria_id))}</span><strong>${moneyFromMinor(item.spentMinor)} / ${moneyFromMinor(item.limiteMinor)}</strong></div><progress max="${Math.max(item.limiteMinor, 1)}" value="${Math.min(item.spentMinor, item.limiteMinor)}"></progress></div>`).join("")}</section>` : ""}
-      ${goalPage.rows.length ? `<section class="panel"><div class="section-head"><h2>Metas de ahorro</h2><a class="link-button" href="#metas">Ver metas</a></div>${goalPage.rows.map((goal) => `<div class="category-row"><div><span>${esc(goal.nombre)}</span><strong>${money(goal.monto_actual, goal.moneda)} / ${money(goal.monto_objetivo, goal.moneda)}</strong></div><progress max="${Math.max(Number(goal.monto_objetivo), 1)}" value="${Math.min(Number(goal.monto_actual), Number(goal.monto_objetivo))}"></progress></div>`).join("")}</section>` : ""}
-      ${recent.hasMore ? `<p class="caption">El resumen usa agregados completos para ingresos y egresos. La lista y el gráfico muestran hasta 100 movimientos del mes.</p>` : ""}`;
+      <section class="dashboard-metrics" aria-label="Resumen del periodo">${metricCards}</section>
+      <div class="dashboard-grid">
+        <div class="dashboard-main-column">
+          <section class="panel dashboard-panel chart-panel"><header class="dashboard-panel-head"><div><h2>Evolución de tus finanzas</h2><p class="caption">Ingresos, gastos y balance neto acumulado · ${esc(currency)}</p></div><label class="select-control"><span class="sr-only">Periodo del gráfico</span><select id="chart-range"><option value="6" ${range === 6 ? "selected" : ""}>Últimos 6 meses</option><option value="12" ${range === 12 ? "selected" : ""}>Últimos 12 meses</option></select><svg aria-hidden="true"><use href="#i-chevron"></use></svg></label></header><div class="chart-legend"><span><i class="legend-income"></i>Ingresos</span><span><i class="legend-expense"></i>Gastos</span><span><i class="legend-net"></i>Balance acumulado</span></div>${chartRowsSvg}<p class="chart-footnote">El balance acumulado suma ingresos menos gastos desde el inicio del periodo; no representa el saldo de tus cuentas.</p></section>
+          <section class="panel dashboard-panel recent-panel"><header class="dashboard-panel-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(monthTitle)} · últimos registros</p></div><a class="link-button" href="#movimientos">Ver todos <span aria-hidden="true">→</span></a></header>${recentRows ? `<div class="table-scroll"><table class="dashboard-table"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>${recentRows}</tbody></table></div>${recent.hasMore ? `<p class="table-note">Se muestran los cinco más recientes. El resumen mensual usa agregados completos.</p>` : ""}` : `<div class="dashboard-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-transfer"></use></svg></span><strong>Aún no hay movimientos en ${esc(monthTitle)}</strong><p>Los ingresos y gastos que registres aparecerán aquí.</p><button type="button" class="btn primary" data-new="movimientos" data-type="INGRESO">Registrar ingreso</button></div>`}</section>
+        </div>
+        <aside class="dashboard-side-column">
+          <section class="panel dashboard-panel distribution-panel"><header class="dashboard-panel-head"><div><h2>Distribución de gastos</h2><p class="caption">${esc(monthTitle)}</p></div></header>${donutMarkup(topCategories, categoryName, currency, recent.hasMore)}</section>
+          <section class="panel dashboard-panel accounts-panel"><header class="dashboard-panel-head"><div><h2>Mis cuentas</h2><p class="caption">Saldos en ${esc(currency)}</p></div><a class="link-button" href="#cuentas">Ver todas</a></header>${accountRows || `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></span><strong>Aún no tienes cuentas</strong><p>Agrega una cuenta para consultar tu saldo.</p><a class="link-button" href="#cuentas">Ir a cuentas</a></div>`}</section>
+          <section class="panel dashboard-panel cards-panel"><header class="dashboard-panel-head"><div><h2>Mis tarjetas</h2><p class="caption">Información protegida</p></div><a class="link-button" href="#tarjetas">Ver todas</a></header>${cards || `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-card"></use></svg></span><strong>Aún no tienes tarjetas</strong><p>Las tarjetas que registres aparecerán aquí.</p></div>`}</section>
+        </aside>
+      </div>
+      <div class="dashboard-lower-grid">
+        <section class="panel dashboard-panel lower-panel"><header class="dashboard-panel-head"><div><h2>Presupuestos del mes</h2><p class="caption">Gastos registrados frente a tus límites</p></div><a class="link-button" href="#presupuestos">Gestionar</a></header>${budgetsMarkup}</section>
+        <section class="panel dashboard-panel lower-panel"><header class="dashboard-panel-head"><div><h2>Planificación</h2><p class="caption">Deudas y objetivos registrados</p></div></header><div class="planning-block"><div class="planning-block-head"><h3>Deudas pendientes</h3><a class="link-button" href="#deudas">Ver deudas</a></div>${debtMarkup}</div><div class="planning-block"><div class="planning-block-head"><h3>Metas de ahorro</h3><a class="link-button" href="#metas">Ver metas</a></div>${goalsMarkup}</div></section>
+      </div>`;
   } catch (error) { showDataError(error); }
 }
 

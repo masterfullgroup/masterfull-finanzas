@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#315efb">
+  <meta name="theme-color" content="#081827">
   <title>Masterfull Finanzas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=design-system-20261007">
   <link rel="stylesheet" href="design-tokens.css?v=visual-polish-20261007-v2">
+  <link rel="stylesheet" href="masterfull-redesign.css?v=20261010">
   <script type="module" src="app.js?v=firebase-1"></script>
 </head>
 <body>
@@ -27,12 +28,27 @@
       <symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
       <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M7 14h4l2 2h4"/></symbol>
       <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M7 16l4-5 4 3 5-7"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/><path d="M9 21v-7h6v7"/></symbol>
+      <symbol id="i-income" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16V8m-4 4 4-4 4 4"/></symbol>
+      <symbol id="i-expense" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8m-4-4 4 4 4-4"/></symbol>
+      <symbol id="i-piggy" viewBox="0 0 24 24"><path d="M19 9.5A7 7 0 0 0 7 6.4L4 6l1 3-1 2v4h2l1 2h2l1-2h5l1 2h2l.6-3A5.5 5.5 0 0 0 21 10h-2z"/><path d="M8 5V3m7 8h.01M3 12H2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5m5 5H3m9-9h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol>
+      <symbol id="i-chip" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4"/></symbol>
     </defs>
   </svg>
   <div id="toast" class="toast" role="status"></div>
   <section id="auth" class="auth-view hidden">
     <main class="auth-card">
-      <div class="brand"><span class="brand-mark">M</span><span><strong>Masterfull</strong><small>Finanzas personales</small></span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M3 25V6l13 10L29 6v19M3 25l13-9 13 9"/></svg></span><span><strong>Masterfull</strong><small>Finanzas personales</small></span></div>
       <p class="eyebrow">TU ESPACIO FINANCIERO</p>
       <h1 id="auth-title">Bienvenido de nuevo</h1>
       <p id="auth-copy">Ingresa para continuar organizando tus finanzas.</p>
@@ -49,16 +65,29 @@
   </section>
 
   <div id="app" class="app-shell hidden">
-    <aside class="sidebar">
-      <a class="brand sidebar-brand" href="#resumen"><span class="sidebar-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M8 8h8M8 12h4M8 16h8"/><circle cx="16" cy="12" r="1.25"/></svg></span><span class="sidebar-brand-copy"><strong>Masterfull</strong><small>Finanzas personales</small></span></a>
-      <nav id="navigation"></nav>
-      <div class="profile"><span id="avatar" class="avatar">M</span><span><strong id="profile-name">Mi cuenta</strong><small id="profile-mode">Cuenta personal</small></span><button id="logout" title="Cerrar sesión">↪</button></div>
+    <aside class="sidebar" id="app-sidebar">
+      <a class="brand sidebar-brand" href="#resumen"><span class="sidebar-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M3 25V6l13 10L29 6v19M3 25l13-9 13 9"/></svg></span><span class="sidebar-brand-copy"><strong>Masterfull</strong><small>Finanzas</small></span></a>
+      <nav id="navigation" aria-label="Navegación principal"></nav>
+      <div class="profile"><span id="avatar" class="avatar">M</span><span><strong id="profile-name">Mi cuenta</strong><small id="profile-mode">Datos protegidos</small></span><button id="logout" title="Cerrar sesión" aria-label="Cerrar sesión"><svg aria-hidden="true"><use href="#i-logout"></use></svg></button></div>
     </aside>
     <main class="main">
       <header class="topbar">
-        <div><p id="page-eyebrow" class="eyebrow">PANEL FINANCIERO</p><h1 id="page-title">Resumen</h1></div>
-        <div class="top-actions"><span id="today" class="date-chip"></span><button id="add-main" class="btn primary">＋ Nuevo registro</button></div>
+        <div class="topbar-start">
+          <button id="sidebar-toggle" class="icon-button mobile-menu-toggle" type="button" aria-label="Abrir navegación" aria-expanded="false" aria-controls="navigation"><svg aria-hidden="true"><use href="#i-menu"></use></svg></button>
+          <label class="global-search" for="global-search-input"><svg aria-hidden="true"><use href="#i-search"></use></svg><input id="global-search-input" type="search" autocomplete="off" placeholder="Buscar movimientos, cuentas, tarjetas…" aria-controls="global-search-results" aria-expanded="false"><kbd>/</kbd><div id="global-search-results" class="search-results" role="listbox" hidden></div></label>
+        </div>
+        <div class="topbar-actions">
+          <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Activar tema oscuro" title="Cambiar tema"><svg class="sun-icon" aria-hidden="true"><use href="#i-sun"></use></svg><svg class="moon-icon" aria-hidden="true"><use href="#i-moon"></use></svg></button>
+          <div class="user-menu-wrap">
+            <button id="profile-menu-trigger" class="user-menu" type="button" aria-expanded="false" aria-controls="profile-menu"><span id="avatar-top" class="avatar-top">M</span><span class="user-menu-copy"><strong id="profile-name-top">Mi cuenta</strong><small>Cuenta personal</small></span><svg class="user-menu-chevron" aria-hidden="true"><use href="#i-chevron"></use></svg></button>
+            <div id="profile-menu" class="profile-popover" hidden><a href="#perfil"><svg aria-hidden="true"><use href="#i-user"></use></svg>Mi perfil</a><button id="profile-menu-logout" type="button"><svg aria-hidden="true"><use href="#i-logout"></use></svg>Cerrar sesión</button></div>
+          </div>
+        </div>
       </header>
+      <section class="page-heading">
+        <div class="page-heading-copy"><p id="page-eyebrow" class="eyebrow">TU ESPACIO FINANCIERO</p><h1 id="page-title">Dashboard</h1><p id="page-description" class="page-description">Aquí tienes un resumen de tu situación financiera.</p></div>
+        <div class="page-actions"><label id="dashboard-period-control" class="period-control"><svg aria-hidden="true"><use href="#i-calendar"></use></svg><span class="sr-only">Mes del resumen</span><input id="dashboard-month" type="month" aria-label="Mes del resumen"></label><span id="today" class="date-chip"></span><button id="add-main" class="btn primary"><span aria-hidden="true">＋</span> Nuevo registro</button></div>
+      </section>
       <div id="content"></div>
     </main>
   </div>
