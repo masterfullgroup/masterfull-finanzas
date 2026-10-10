@@ -3,6 +3,7 @@ import {
   APP_TIME_ZONE, aggregateByMonth, dateInAppTimeZone, monthBounds, shiftMonth,
   fromMinorUnits,
 } from "./js/finance.js";
+import { summarizeBudgetMonth } from "./js/budgeting.js";
 import {
   categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, getProfile, listPage,
   monthTotals, openReceipt, removeDocument, saveDocument, saveLedgerEntry,
@@ -98,7 +99,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   user: null, profile: {}, page: "resumen", data: {}, entityCursor: null, entityHasMore: false,
   reportRows: [], reportCursor: null, reportHasMore: false, editing: null, filter: {}, busy: false,
-  accountFilters: {}, movementAccountFilter: null,
+  accountFilters: {}, movementAccountFilter: null, budgetMonth: null,
 };
 let services = null;
 let authMode = "login";
@@ -147,6 +148,7 @@ function bind() {
     if (event.target.matches("[data-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
     if (event.target.matches("[data-account-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
     if (event.target.matches("[data-profile-form]")) { event.preventDefault(); void saveProfile(event.target); }
+    if (event.target.matches("[data-budget-month-form]")) { event.preventDefault(); void changeBudgetMonth(event.target); }
   });
   $("#record-form").addEventListener("submit", (event) => void saveForm(event));
   $("#record-form").addEventListener("change", (event) => updateFormFlow(event.target));
@@ -242,6 +244,7 @@ async function onSignedIn(user) {
 
 async function route() {
   state.page = (location.hash || "#resumen").slice(1);
+  state.budgetMonth ||= currentMonth();
   if (state.page === "dashboard") state.page = "resumen";
   if (state.page === "personas_lista") state.page = "personas";
   if (!["resumen", "flujo", "reportes", "perfil", ...Object.keys(FIELDS)].includes(state.page)) state.page = "resumen";
@@ -250,6 +253,7 @@ async function route() {
   $("#page-title").textContent = info.title;
   $("#page-eyebrow").textContent = info.eye;
   $("#add-main").classList.toggle("hidden", !FIELDS[state.page]);
+  $("#add-main").textContent = state.page === "presupuestos" ? "＋ Nuevo presupuesto" : "＋ Nuevo registro";
   state.entityCursor = null;
   state.entityHasMore = false;
   if (state.page === "resumen") return renderDashboard();
@@ -305,7 +309,7 @@ async function renderDashboard() {
           <p class="caption">Saldo de ${activeAccounts.filter((item) => (item.moneda || "PEN") === currency).length} cuentas en ${esc(currency)}. Otras monedas se consultan en Cuentas.</p>
           <div class="cashflow"><div><span>INGRESOS DEL MES</span><strong class="positive">+ ${money(income)}</strong></div><div><span>EGRESOS DEL MES</span><strong class="negative">− ${money(expense)}</strong></div><div><span>BALANCE MENSUAL</span><strong class="${balance >= 0 ? "positive" : "negative"}">${money(balance)}</strong></div></div>
         </article>
-        <aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income ? `Conservaste el ${rate}% de tus ingresos.` : "Empieza registrando un movimiento."}</h2><p>${balance >= 0 ? "Tu balance mensual es positivo." : "Tus egresos superaron lo ingresado."}</p><div class="stat-card"><span>DEUDA PENDIENTE</span>${Object.entries(debtByCurrency).length ? Object.entries(debtByCurrency).map(([code, amount]) => `<strong>${moneyFromMinor(amount, code)}</strong>`).join("") : `<strong>${money(0, currency)}</strong>`}</div></aside>
+        <aside class="insight-card"><p class="eyebrow">LECTURA DEL MES</p><h2>${income ? balance >= 0 ? `Tasa de ahorro estimada: ${rate}%.` : `Déficit registrado: ${money(Math.abs(balance))}.` : "Empieza registrando un ingreso."}</h2><p>${income ? balance >= 0 ? "El cálculo considera los ingresos y gastos registrados del mes." : "Tus gastos registrados superan tus ingresos." : "El ahorro se calculará cuando registres ingresos."}</p><div class="stat-card"><span>DEUDA PENDIENTE</span>${Object.entries(debtByCurrency).length ? Object.entries(debtByCurrency).map(([code, amount]) => `<strong>${moneyFromMinor(amount, code)}</strong>`).join("") : `<strong>${money(0, currency)}</strong>`}</div></aside>
       </section>
       <section class="dashboard-columns"><article class="panel"><div class="section-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(currentMonth())} · hasta 100 registros para el resumen</p></div><a class="link-button" href="#movimientos">Ver movimientos</a></div>${recent.rows.slice(0, 6).map((item) => `<div class="transaction-row"><span class="transaction-icon">${item.tipo === "INGRESO" ? "↗" : "↘"}</span><span class="transaction-info"><strong>${esc(item.descripcion || categoryName(item.categoria_id))}</strong><small>${esc(item.fecha)} · ${esc(categoryName(item.categoria_id))}</small></span><strong class="amount ${item.tipo === "INGRESO" ? "positive" : "negative"}">${item.tipo === "INGRESO" ? "+" : "−"}${moneyFromMinor(item.montoMinor, item.moneda)}</strong></div>`).join("") || `<p class="empty">Aún no tienes movimientos este mes.</p>`}</article>
         <article class="panel"><div class="section-head"><div><h2>Gastos por categoría</h2><p class="caption">Este mes, en tus registros recientes</p></div></div>${topCategories.map(([id, amount]) => `<div class="category-row"><div><span>${esc(categoryName(id))}</span><strong>${moneyFromMinor(amount)}</strong></div><progress max="${Math.max(...topCategories.map(([, total]) => total), 1)}" value="${amount}"></progress></div>`).join("") || `<p class="empty">Registra gastos para ver el análisis.</p>`}</article></section>
@@ -317,6 +321,7 @@ async function renderDashboard() {
 
 async function loadEntityPage(append) {
   const entity = state.page;
+  if (entity === "presupuestos") return loadBudgetPage(append);
   if (!FIELDS[entity]) return;
   if (!append) pageLoading();
   try {
@@ -425,6 +430,102 @@ async function applyFilters(form) {
   await loadEntityPage(false);
 }
 
+async function changeBudgetMonth(form) {
+  const month = new FormData(form).get("month");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || "")) {
+    toast("Selecciona un mes válido.");
+    return;
+  }
+  state.budgetMonth = month;
+  state.entityCursor = null;
+  await loadBudgetPage(false);
+}
+
+async function loadBudgetPage(append) {
+  if (!append) pageLoading();
+  const month = state.budgetMonth || currentMonth();
+  const currency = state.profile.currency || "PEN";
+  const { start, end } = monthBounds(month);
+  try {
+    const result = await listPage(state.user.uid, "presupuestos", {
+      limit: REFERENCE_LIMIT, cursor: append ? state.entityCursor : null,
+      orderField: "mes", direction: "desc",
+      equals: { mes: `${month}-01`, moneda: currency },
+    });
+    const previous = append ? (state.data.presupuestos || []) : [];
+    const budgets = [...previous, ...result.rows];
+    const categoryById = new Map((state.data.categorias || []).map((item) => [item.id, item]));
+    const categoryIds = [...new Set(budgets.map((item) => item.categoria_id).filter(Boolean))];
+    const categorySpending = await Promise.all(categoryIds.map(async (categoryId) => ({
+      categoryId,
+      spentMinor: await categoryExpenseTotal(state.user.uid, categoryId, start, end, currency),
+    })));
+    const totals = await monthTotals(state.user.uid, start, end, currency);
+    state.data.presupuestos = budgets;
+    state.entityCursor = result.cursor;
+    state.entityHasMore = result.hasMore;
+    const decorated = budgets.map((item) => ({
+      ...item,
+      categoryName: categoryById.get(item.categoria_id)?.nombre || "Categoría sin nombre",
+    }));
+    const summary = summarizeBudgetMonth({
+      incomeMinor: totals.incomeMinor,
+      expenseMinor: totals.expenseMinor,
+      budgets: decorated,
+      categorySpending,
+    });
+    renderBudgets(summary, decorated, currency, month);
+  } catch (error) { showDataError(error); }
+}
+
+function renderBudgets(summary, budgets, currency, month) {
+  const alerts = [
+    ...summary.overBudget.map((item) => `<li class="budget-alert over"><strong>${esc(item.categoryName)}</strong> superó su límite por ${moneyFromMinor(Math.abs(item.remainingMinor), currency)}.</li>`),
+    ...summary.nearLimit.map((item) => `<li class="budget-alert near"><strong>${esc(item.categoryName)}</strong> ya utilizó ${Math.round(item.usedPercent)}% del presupuesto.</li>`),
+  ];
+  const cards = summary.categories.map((item) => {
+    const statusLabel = item.status === "over" ? "Superado" : item.status === "near" ? "Cerca del límite" : "En control";
+    const statusClass = item.status === "over" ? "over" : item.status === "near" ? "near" : "on-track";
+    const progress = item.usedPercent == null ? 0 : Math.min(100, Math.max(0, item.usedPercent));
+    const remaining = item.remainingMinor < 0
+      ? `Superado por ${moneyFromMinor(Math.abs(item.remainingMinor), currency)}`
+      : `${moneyFromMinor(item.remainingMinor, currency)} disponibles`;
+    const ids = item.budgetIds.filter(Boolean);
+    const editActions = ids.map((id, index) => `<span class="budget-record-actions"><button type="button" data-edit="presupuestos" data-id="${esc(id)}">${ids.length > 1 ? `Editar #${index + 1}` : "Editar límite"}</button><button type="button" class="danger" data-delete="presupuestos" data-id="${esc(id)}">Eliminar</button></span>`).join("");
+    return `<article class="budget-category ${statusClass}">
+      <div class="budget-category-head"><div><h3>${esc(item.categoryName)}</h3><span>${esc(statusLabel)}${ids.length > 1 ? ` · ${ids.length} registros` : ""}</span></div><strong>${moneyFromMinor(item.spentMinor, currency)} <small>/ ${moneyFromMinor(item.limitMinor, currency)}</small></strong></div>
+      <progress class="budget-progress" max="100" value="${progress}" aria-label="${esc(item.categoryName)}: ${Math.round(item.usedPercent || 0)} por ciento del presupuesto"></progress>
+      <div class="budget-category-foot"><span>${remaining}</span><div class="budget-category-actions">${editActions}</div></div>
+    </article>`;
+  }).join("");
+  const savingsText = summary.savingsRate == null
+    ? `<strong>Sin datos de ingresos</strong><small>Registra ingresos para calcular el ahorro del mes.</small>`
+    : summary.netSavingsMinor < 0
+      ? `<strong class="negative">Déficit de ${moneyFromMinor(Math.abs(summary.netSavingsMinor), currency)}</strong><small>Los gastos superan los ingresos registrados.</small>`
+      : `<strong class="positive">${moneyFromMinor(summary.netSavingsMinor, currency)} · ${summary.savingsRate.toLocaleString("es-PE", { maximumFractionDigits: 1 })}%</strong><small>Ingresos menos gastos registrados este mes.</small>`;
+  const alertPanel = alerts.length || summary.duplicateCategoryCount
+    ? `<section class="budget-alerts" role="status" aria-live="polite"><h2>Atención este mes</h2><ul>${alerts.join("")}${summary.duplicateCategoryCount ? `<li class="budget-alert near">Hay ${summary.duplicateCategoryCount} presupuesto(s) repetidos para la misma categoría. Revísalos para evitar límites ambiguos.</li>` : ""}</ul></section>`
+    : budgets.length ? `<p class="budget-clear" role="status">Todos tus presupuestos están dentro del límite.</p>` : "";
+  const list = cards
+    ? `<div class="budget-list">${cards}</div>`
+    : `<section class="budget-empty"><span class="budget-empty-mark" aria-hidden="true">⌁</span><h2>Aún no hay límites para ${esc(month)}</h2><p>Asigna un importe mensual a tus categorías de gasto para comparar el plan con lo que realmente gastas.</p><p class="caption">Usa “Nuevo presupuesto” para asignar el primer límite.</p></section>`;
+  const pagination = state.entityHasMore ? `<p class="caption budget-partial">El resumen incluye los primeros ${budgets.length} límites. Carga el resto para completar la comparación.</p><div class="load-more"><button class="btn secondary" data-load-more>Cargar más presupuestos</button></div>` : "";
+  const unbudgeted = summary.unbudgetedExpenseMinor > 0
+    ? `<p class="budget-unplanned">Gasto en categorías sin límite: <strong>${moneyFromMinor(summary.unbudgetedExpenseMinor, currency)}</strong></p>` : "";
+  const monthCaption = new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric", timeZone: APP_TIME_ZONE }).format(new Date(`${month}-15T12:00:00-05:00`));
+  $("#content").innerHTML = `
+    <form class="budget-month-form" data-budget-month-form><label for="budget-month">Periodo</label><input id="budget-month" name="month" type="month" value="${esc(month)}"><button type="submit" class="btn secondary">Ver mes</button></form>
+    <section class="budget-summary" aria-label="Resumen de ${esc(monthCaption)}">
+      <article class="budget-stat"><span>INGRESOS REGISTRADOS</span><strong class="positive">${moneyFromMinor(summary.incomeMinor, currency)}</strong><small>${esc(monthCaption)}</small></article>
+      <article class="budget-stat"><span>GASTOS REGISTRADOS</span><strong class="negative">${moneyFromMinor(summary.expenseMinor, currency)}</strong><small>Movimientos de gasto, sin transferencias</small></article>
+      <article class="budget-stat"><span>LÍMITES ASIGNADOS</span><strong>${moneyFromMinor(summary.plannedMinor, currency)}</strong><small>${budgets.length} ${budgets.length === 1 ? "registro" : "registros"} de presupuesto</small></article>
+      <article class="budget-stat budget-savings"><span>AHORRO ESTIMADO</span>${savingsText}</article>
+    </section>
+    ${alertPanel}
+    <section class="panel budget-panel"><div class="section-head"><div><span class="overline">PLAN MENSUAL</span><h2>Presupuesto por categoría</h2><p class="caption">El gasto real se calcula con todos los movimientos del periodo en ${esc(currency)}.</p></div></div>${list}${unbudgeted}</section>
+    ${pagination}`;
+}
+
 async function loadReports(append) {
   pageLoading();
   const current = currentMonth();
@@ -522,7 +623,7 @@ function openForm(entity, row = null, preset = {}) {
   state.editing = { entity, id: row?.id || null, row };
   $("#dialog-title").textContent = `${row ? "Editar" : "Nuevo"} ${META[entity].singular}`;
   const defaults = {
-    moneda: state.profile.currency || "PEN", fecha: todayISO(), fecha_saldo_inicial: todayISO(), mes: currentMonth(),
+    moneda: state.profile.currency || "PEN", fecha: todayISO(), fecha_saldo_inicial: todayISO(), mes: state.budgetMonth || currentMonth(),
     saldo_inicial: 0, saldo_inicial_usado: 0, monto_pagado: 0, monto_actual: 0, numero_cuotas: 1,
     tipo: entity === "propietarios" ? "PERSONA" : entity === "tarjetas" ? "CREDITO" : "GASTO",
     medio_pago: "CUENTA_BANCARIA", estado: "ACTIVA", estado_deuda: "PENDIENTE",
@@ -642,7 +743,12 @@ function validateRecord(entity, value, row) {
   if (entity === "deudas" && value.monto_pagado > value.monto_total) throw new Error("El importe pagado no puede superar la deuda total.");
   if (entity === "metas" && value.monto_actual > value.monto_objetivo) throw new Error("El ahorro actual no puede superar la meta objetivo.");
   if (entity === "cuentas" && !value.propietario_id) throw new Error("Selecciona un titular.");
-  if (entity === "presupuestos" && value.limite <= 0) throw new Error("El límite debe ser mayor que cero.");
+  if (entity === "presupuestos") {
+    if (value.limite <= 0) throw new Error("El límite debe ser mayor que cero.");
+    const duplicate = (state.data.presupuestos || []).find((item) => item.id !== row?.id
+      && item.categoria_id === value.categoria_id && item.moneda === value.moneda && item.mes === value.mes);
+    if (duplicate) throw new Error("Ya existe un presupuesto para esa categoría, mes y moneda. Edita el límite existente.");
+  }
 }
 
 async function saveForm(event) {
