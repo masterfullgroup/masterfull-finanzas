@@ -78,6 +78,10 @@ body {
 }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
+.filters select, .account-filters select, .form-grid select, .profile-panel select, .select-control select,
+input[type="date"], input[type="month"], input[type="week"] { accent-color: var(--mf-emerald); }
+select option { background-color: var(--mf-card); color: var(--mf-ink); }
+select option:checked, select option:focus, select option:hover { background-color: var(--mf-emerald); color: #fff; }
 .hidden, [hidden] { display: none !important; }
 .sr-only {
   position: absolute;
