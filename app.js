@@ -574,7 +574,7 @@ function financialChartSvg(history, currency) {
 }
 
 function donutMarkup(categories, categoryName, currency, sampled) {
-  const palette = ["#10B981", "#3B82F6", "#F59E0B", "#A78BFA", "#EF6A5B", "#14B8A6"];
+  const palette = ["#10B981", "#081827", "#F59E0B", "#EF4444", "#059669", "#486581"];
   const ranked = categories.sort((a, b) => b[1] - a[1]);
   const visible = ranked.slice(0, 4).map(([id, amount]) => [categoryName(id), amount]);
   const others = ranked.slice(4).reduce((sum, [, amount]) => sum + amount, 0);
@@ -760,12 +760,31 @@ function cellValue(entity, key, row) {
   return esc(value || "—");
 }
 
+function displayBrandColor(value) {
+  if (!/^#[\da-f]{6}$/i.test(value || "")) return "#10B981";
+  const hex = value.slice(1);
+  const channels = [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+  const [red, green, blue] = channels;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+    if (hue < 0) hue += 360;
+  }
+  return hue >= 195 && hue <= 255 && lightness > 0.2 ? "#10B981" : value;
+}
+
 function renderPeople(rows) {
   if (!rows.length) return `<section class="people-empty"><div class="people-empty-mark" aria-hidden="true">＋</div><h2>Aún no hay personas</h2><p>Agrega a las personas de tu hogar para tener sus datos de contacto a mano.</p><button type="button" class="btn primary" data-new="personas">Agregar primera persona</button></section>`;
   const cards = rows.map((row) => {
     const name = row.nombre || "Persona sin nombre";
     const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("es");
-    const color = /^#[\da-f]{3}(?:[\da-f]{3})?(?:[\da-f]{2})?$/i.test(row.color || "") ? row.color : "#315efb";
+    const color = displayBrandColor(/^#[\da-f]{3}(?:[\da-f]{3})?(?:[\da-f]{2})?$/i.test(row.color || "") ? row.color : "#10B981");
     const contact = [row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : "", row.telefono ? `<a href="tel:${esc(String(row.telefono).replace(/[^+\d]/g, ""))}">${esc(row.telefono)}</a>` : ""].filter(Boolean);
     const birthdate = row.fecha_nacimiento ? `<span class="people-birthday"><span aria-hidden="true">🎂</span> ${esc(row.fecha_nacimiento)}</span>` : "";
     return `<article class="people-card"><div class="people-card-main"><span class="people-avatar" style="--person-color:${esc(color)}" aria-hidden="true">${esc(initials || "P")}</span><div class="people-identity"><h3>${esc(name)}</h3><span class="people-relation">${esc(optionLabel(row.relacion || "PERSONA"))}</span></div><div class="people-actions"><button type="button" data-edit="personas" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="personas" data-id="${esc(row.id)}">Eliminar</button></div></div><div class="people-contact">${contact.length ? contact.map((item) => `<span class="people-contact-item">${item}</span>`).join("") : `<span class="people-no-contact">Sin datos de contacto</span>`}${birthdate}</div></article>`;

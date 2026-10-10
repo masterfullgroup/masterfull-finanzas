@@ -15,10 +15,9 @@
   --mf-border-strong: #cbd5e1;
   --mf-expense: #ef4444;
   --mf-expense-soft: #fff0f0;
-  --mf-info: #3b82f6;
-  --mf-info-soft: #edf4ff;
+  --mf-info: #059669;
+  --mf-info-soft: #d9f7ed;
   --mf-warning: #f59e0b;
-  --mf-violet: #8b73c9;
   --mf-shadow: 0 4px 20px rgba(8, 24, 39, .055);
   --mf-shadow-raised: 0 12px 28px rgba(8, 24, 39, .1);
   --mf-radius-card: 14px;
@@ -54,7 +53,7 @@
   --mf-border-strong: rgba(215, 229, 242, .17);
   --mf-emerald-soft: rgba(16, 185, 129, .15);
   --mf-expense-soft: rgba(239, 68, 68, .13);
-  --mf-info-soft: rgba(59, 130, 246, .14);
+  --mf-info-soft: rgba(16, 185, 129, .14);
   --mf-shadow: 0 4px 20px rgba(0, 0, 0, .17);
   --mf-shadow-raised: 0 12px 28px rgba(0, 0, 0, .26);
   --ink: var(--mf-ink);
@@ -81,7 +80,7 @@ button { color: inherit; }
 .filters select, .account-filters select, .form-grid select, .profile-panel select, .select-control select,
 input[type="date"], input[type="month"], input[type="week"] { accent-color: var(--mf-emerald); }
 select option { background-color: var(--mf-card); color: var(--mf-ink); }
-select option:checked, select option:focus, select option:hover { background-color: var(--mf-emerald); color: #fff; }
+select option:checked, select option:focus, select option:hover { background-color: var(--mf-emerald); box-shadow: inset 0 0 0 100px var(--mf-emerald); color: #fff; }
 .hidden, [hidden] { display: none !important; }
 .sr-only {
   position: absolute;
@@ -471,8 +470,8 @@ select option:checked, select option:focus, select option:hover { background-col
 .chart-axis-label { fill: var(--mf-muted); font-family: Inter, sans-serif; font-size: 9px; }
 .chart-bar-income { fill: #22c58b; }
 .chart-bar-expense { fill: #fa7776; }
-.chart-net-line { fill: none; stroke: var(--mf-info); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.chart-line-dot { fill: var(--mf-card); stroke: var(--mf-info); stroke-width: 2; }
+.chart-net-line { fill: none; stroke: var(--mf-emerald-hover); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-line-dot { fill: var(--mf-card); stroke: var(--mf-emerald-hover); stroke-width: 2; }
 .chart-footnote, .sample-note { margin: 4px 0 0; color: var(--mf-muted); font-size: 9px; line-height: 1.45; }
 .table-scroll { max-width: 100%; overflow-x: auto; }
 .dashboard-table, .table-panel table { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -499,8 +498,8 @@ select option:checked, select option:focus, select option:hover { background-col
 .recent-actions button:hover { background: var(--mf-emerald-soft); color: #087f5b; }
 .recent-actions .is-danger:hover { background: var(--mf-expense-soft); color: #b7373b; }
 .table-note { margin: 0; padding: 9px 10px 0; border-top: 1px solid var(--mf-border); color: var(--mf-muted); font-size: 9px; }
-.link-button { display: inline-flex; min-height: 30px; align-items: center; justify-content: center; gap: 5px; padding: 5px 7px; border: 0; border-radius: 7px; background: transparent; color: #1767d3; cursor: pointer; font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
-.link-button:hover { background: var(--mf-info-soft); color: #1054b5; }
+.link-button { display: inline-flex; min-height: 30px; align-items: center; justify-content: center; gap: 5px; padding: 5px 7px; border: 0; border-radius: 7px; background: transparent; color: #047857; cursor: pointer; font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.link-button:hover { background: var(--mf-info-soft); color: var(--mf-emerald-hover); }
 .donut-content { display: grid; grid-template-columns: minmax(94px, .85fr) minmax(90px, 1fr); align-items: center; gap: 12px; }
 .donut-chart { display: grid; width: min(100%, 138px); aspect-ratio: 1; place-items: center; border-radius: 50%; background: var(--donut-stops, var(--mf-border)); }
 .donut-center { display: grid; width: 68%; height: 68%; align-content: center; justify-items: center; gap: 2px; border-radius: 50%; background: var(--mf-card); text-align: center; }
@@ -521,7 +520,7 @@ select option:checked, select option:focus, select option:hover { background-col
 .compact-account-copy strong { overflow: hidden; color: var(--mf-ink); font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .compact-account-copy small { overflow: hidden; color: var(--mf-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .compact-account-balance { color: var(--mf-ink); font-size: 10px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.bank-card-preview { position: relative; display: grid; min-height: 139px; align-content: space-between; overflow: hidden; margin-top: 8px; padding: 14px; border-radius: 11px; background: linear-gradient(128deg, #0c2340 0%, #123c68 58%, #176e70 100%); color: #f3f8ff; }
+.bank-card-preview { position: relative; display: grid; min-height: 139px; align-content: space-between; overflow: hidden; margin-top: 8px; padding: 14px; border-radius: 11px; background: linear-gradient(128deg, var(--mf-midnight) 0%, var(--mf-midnight-raised) 58%, #087f5b 100%); color: #f3f8ff; }
 .bank-card-preview::after { position: absolute; top: -44px; right: -29px; width: 125px; height: 125px; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; box-shadow: 0 0 0 16px rgba(255,255,255,.035), 0 0 0 34px rgba(255,255,255,.025); content: ""; pointer-events: none; }
 .bank-card-top, .bank-card-bottom { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bank-card-top > span { font-size: 10px; font-weight: 800; letter-spacing: .11em; }
@@ -591,7 +590,7 @@ progress::-moz-progress-bar { border-radius: 99px; background: var(--mf-emerald)
 .account-balance { display: grid; gap: 2px; text-align: right; }
 .account-balance strong { color: var(--mf-ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 .account-actions { display: flex; grid-column: 2 / -1; gap: 5px; }
-.account-actions button, .people-actions button, .actions button { min-height: 32px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: #1767d3; cursor: pointer; font-size: 10px; font-weight: 650; }
+.account-actions button, .people-actions button, .actions button { min-height: 32px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: #047857; cursor: pointer; font-size: 10px; font-weight: 650; }
 .account-actions button:hover, .people-actions button:hover, .actions button:hover { background: var(--mf-info-soft); }
 .account-actions .danger, .people-actions .danger, .actions .danger { color: #bd4545; }
 .account-actions .danger:hover, .people-actions .danger:hover, .actions .danger:hover { background: var(--mf-expense-soft); }
@@ -604,7 +603,7 @@ progress::-moz-progress-bar { border-radius: 99px; background: var(--mf-emerald)
 .people-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--person-color) 12%, var(--mf-card)); color: var(--person-color); font-size: 12px; font-weight: 750; }
 .people-identity { min-width: 0; flex: 1; }
 .people-identity h3 { overflow: hidden; margin: 0; color: var(--mf-ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.people-relation { display: inline-flex; margin-top: 3px; padding: 2px 7px; border-radius: 99px; background: var(--mf-info-soft); color: #275db4; font-size: 9px; font-weight: 700; }
+.people-relation { display: inline-flex; margin-top: 3px; padding: 2px 7px; border-radius: 99px; background: var(--mf-info-soft); color: #047857; font-size: 9px; font-weight: 700; }
 .people-actions { display: flex; gap: 1px; }
 .people-contact { display: flex; flex-wrap: wrap; gap: 7px 12px; margin: 12px 0 0; padding: 10px 0 0 48px; border-top: 1px solid var(--mf-border); color: var(--mf-muted); font-size: 10px; }
 .people-contact-item { overflow-wrap: anywhere; }
