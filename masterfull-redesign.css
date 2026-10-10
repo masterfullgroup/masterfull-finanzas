@@ -454,9 +454,16 @@ select option:checked, select option:focus, select option:hover { background-col
 .dashboard-panel-head h2, .panel h2, .hero-card h2, .section-head h2 { margin: 0; color: var(--mf-ink); font: 700 14px/1.35 "Plus Jakarta Sans", sans-serif; letter-spacing: -.025em; }
 .dashboard-panel-head .caption { margin: 3px 0 0; }
 .caption { margin: 5px 0 0; color: var(--mf-muted); font-size: 10px; line-height: 1.55; }
-.select-control { position: relative; min-height: 31px; gap: 4px; padding: 0 8px; }
-.select-control select { max-width: 125px; appearance: none; border: 0; outline: 0; background: transparent; color: var(--mf-copy); cursor: pointer; font-size: 9px; }
-.select-control svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.chart-range-control { position: relative; z-index: 4; flex: 0 0 auto; }
+.chart-range-trigger { display: inline-flex; min-width: 145px; min-height: 35px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 11px; border: 1px solid var(--mf-border); border-radius: 9px; background: var(--mf-card); color: var(--mf-ink); cursor: pointer; font-size: 10px; font-weight: 600; text-align: left; transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+.chart-range-trigger:hover, .chart-range-trigger[aria-expanded="true"] { border-color: var(--mf-emerald); background: var(--mf-emerald-soft); }
+.chart-range-trigger:focus-visible { outline: 2px solid var(--mf-emerald); outline-offset: 2px; }
+.chart-range-trigger svg { width: 13px; height: 13px; flex: 0 0 13px; fill: none; stroke: currentColor; stroke-width: 1.8; transition: transform 150ms ease; }
+.chart-range-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.chart-range-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: grid; width: max-content; min-width: 100%; gap: 2px; padding: 5px; border: 1px solid var(--mf-border); border-radius: 10px; background: var(--mf-card); box-shadow: var(--mf-shadow-raised); }
+.chart-range-option { min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--mf-copy); cursor: pointer; font-size: 10px; text-align: left; white-space: nowrap; }
+.chart-range-option:hover, .chart-range-option[aria-selected="true"] { background: var(--mf-emerald-soft); color: var(--mf-emerald-hover); }
+.chart-range-option:focus-visible { outline: 2px solid var(--mf-emerald); outline-offset: -2px; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 13px; margin: 0 0 4px 2px; color: var(--mf-copy); font-size: 9px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .chart-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
@@ -758,6 +765,7 @@ dialog h2 { margin: 0; color: var(--mf-ink); font: 700 20px/1.3 "Plus Jakarta Sa
   .metric-trend { margin-top: 2px; }
   .dashboard-panel-head { align-items: flex-start; }
   .chart-panel .dashboard-panel-head { flex-direction: column; }
+  .chart-range-control { align-self: flex-start; }
   .chart-legend { gap: 8px; font-size: 8px; }
   .chart-axis-label { font-size: 8px; }
   .dashboard-table { min-width: 620px; }

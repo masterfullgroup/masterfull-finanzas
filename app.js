@@ -311,9 +311,22 @@ function bind() {
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest(".user-menu-wrap")) closeProfileMenu();
     if (!event.target.closest(".global-search")) closeGlobalSearch();
+    if (!event.target.closest("[data-chart-range-control]")) closeChartRangeMenu();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeDatePopovers();
+    if (event.key === "Escape") { closeDatePopovers(); closeChartRangeMenu(true); }
+    const chartMenu = event.target.closest?.("[data-chart-range-menu]");
+    const chartTrigger = event.target.closest?.("[data-chart-range-trigger]");
+    if (chartMenu && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      const options = [...chartMenu.querySelectorAll("[data-chart-range-option]")];
+      const current = options.indexOf(document.activeElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      event.preventDefault();
+      options[next]?.focus();
+    } else if (chartTrigger && event.key === "ArrowDown") {
+      event.preventDefault();
+      openChartRangeMenu();
+    }
     if (event.key === "/" && !event.ctrlKey && !event.metaKey && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
       event.preventDefault();
       $("#global-search-input").focus();
@@ -332,10 +345,18 @@ function bind() {
   $("#logout").addEventListener("click", () => services.authSdk.signOut(services.auth));
   $("#add-main").addEventListener("click", () => openForm(state.page));
   $("#content").addEventListener("click", (event) => void contentClick(event));
-  $("#content").addEventListener("change", (event) => {
-    if (!event.target.matches("#chart-range")) return;
-    state.dashboardRange = Number(event.target.value);
-    if (state.page === "resumen") void renderDashboard();
+  $("#content").addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-chart-range-trigger]");
+    const option = event.target.closest("[data-chart-range-option]");
+    if (option) {
+      state.dashboardRange = Number(option.dataset.chartRangeOption);
+      void renderDashboard().then(() => $("[data-chart-range-trigger]")?.focus());
+      return;
+    }
+    if (trigger) {
+      if (trigger.getAttribute("aria-expanded") === "true") closeChartRangeMenu();
+      else openChartRangeMenu();
+    }
   });
   $("#content").addEventListener("submit", (event) => {
     if (event.target.matches("[data-filter-form]")) { event.preventDefault(); void applyFilters(event.target); }
@@ -350,6 +371,26 @@ function toggleSidebar() {
   const open = $("#app").classList.toggle("sidebar-open");
   $("#sidebar-toggle").setAttribute("aria-expanded", String(open));
   $("#sidebar-toggle").setAttribute("aria-label", open ? "Cerrar navegación" : "Abrir navegación");
+}
+
+function openChartRangeMenu() {
+  const control = document.querySelector("[data-chart-range-control]");
+  const trigger = control?.querySelector("[data-chart-range-trigger]");
+  const menu = control?.querySelector("[data-chart-range-menu]");
+  if (!trigger || !menu) return;
+  menu.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  menu.querySelector(`[data-chart-range-option="${state.dashboardRange}"]`)?.focus();
+}
+
+function closeChartRangeMenu(returnFocus = false) {
+  const control = document.querySelector("[data-chart-range-control]");
+  const trigger = control?.querySelector("[data-chart-range-trigger]");
+  const menu = control?.querySelector("[data-chart-range-menu]");
+  if (!trigger || !menu) return;
+  menu.hidden = true;
+  trigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) trigger.focus();
 }
 
 function closeSidebar() {
@@ -677,7 +718,7 @@ async function renderDashboard() {
       <section class="dashboard-metrics" aria-label="Resumen del periodo">${metricCards}</section>
       <div class="dashboard-grid">
         <div class="dashboard-main-column">
-          <section class="panel dashboard-panel chart-panel"><header class="dashboard-panel-head"><div><h2>Evolución de tus finanzas</h2><p class="caption">Ingresos, gastos y balance neto acumulado · ${esc(currency)}</p></div><label class="select-control"><span class="sr-only">Periodo del gráfico</span><select id="chart-range"><option value="6" ${range === 6 ? "selected" : ""}>Últimos 6 meses</option><option value="12" ${range === 12 ? "selected" : ""}>Últimos 12 meses</option></select><svg aria-hidden="true"><use href="#i-chevron"></use></svg></label></header><div class="chart-legend"><span><i class="legend-income"></i>Ingresos</span><span><i class="legend-expense"></i>Gastos</span><span><i class="legend-net"></i>Balance acumulado</span></div><div class="chart-canvas">${chartRowsSvg}</div><p class="chart-footnote">El balance acumulado suma ingresos menos gastos desde el inicio del periodo; no representa el saldo de tus cuentas.</p></section>
+          <section class="panel dashboard-panel chart-panel"><header class="dashboard-panel-head"><div><h2>Evolución de tus finanzas</h2><p class="caption">Ingresos, gastos y balance neto acumulado · ${esc(currency)}</p></div><div class="chart-range-control" data-chart-range-control><button type="button" id="chart-range-trigger" class="select-control chart-range-trigger" data-chart-range-trigger aria-haspopup="listbox" aria-controls="chart-range-options" aria-expanded="false"><span>${range === 6 ? "Últimos 6 meses" : "Últimos 12 meses"}</span><svg aria-hidden="true"><use href="#i-chevron"></use></svg></button><div id="chart-range-options" class="chart-range-menu" data-chart-range-menu role="listbox" aria-label="Periodo del gráfico" hidden><button type="button" class="chart-range-option" role="option" data-chart-range-option="6" aria-selected="${range === 6}">Últimos 6 meses</button><button type="button" class="chart-range-option" role="option" data-chart-range-option="12" aria-selected="${range === 12}">Últimos 12 meses</button></div></div></header><div class="chart-legend"><span><i class="legend-income"></i>Ingresos</span><span><i class="legend-expense"></i>Gastos</span><span><i class="legend-net"></i>Balance acumulado</span></div><div class="chart-canvas">${chartRowsSvg}</div><p class="chart-footnote">El balance acumulado suma ingresos menos gastos desde el inicio del periodo; no representa el saldo de tus cuentas.</p></section>
           <section class="panel dashboard-panel recent-panel"><header class="dashboard-panel-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(monthTitle)} · últimos registros</p></div><a class="link-button" href="#movimientos">Ver todos <span aria-hidden="true">→</span></a></header>${recentRows ? `<div class="table-scroll"><table class="dashboard-table"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>${recentRows}</tbody></table></div>${recent.hasMore ? `<p class="table-note">Se muestran los cinco más recientes. El resumen mensual usa agregados completos.</p>` : ""}` : `<div class="dashboard-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-transfer"></use></svg></span><strong>Aún no hay movimientos en ${esc(monthTitle)}</strong><p>Los ingresos y gastos que registres aparecerán aquí.</p><button type="button" class="btn primary" data-new="movimientos" data-type="INGRESO">Registrar ingreso</button></div>`}</section>
         </div>
         <aside class="dashboard-side-column">
