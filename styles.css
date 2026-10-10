@@ -261,6 +261,7 @@ select option:checked,select option:hover{background:#08776f;color:#fff}
   font-weight: 700;
   letter-spacing: .12em;
   line-height: 1.4;
+  text-transform: uppercase;
 }
 .sidebar nav small:first-child { padding-top: 17px; }
 .sidebar .profile {
