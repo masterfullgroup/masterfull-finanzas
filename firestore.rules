@@ -9,7 +9,7 @@ service cloud.firestore {
       return name in [
         'cuentas', 'tarjetas', 'personas', 'propietarios', 'instituciones',
         'categorias', 'movimientos', 'presupuestos', 'metas', 'deudas',
-        'recurrentes', 'transferencias', 'pagosTarjeta'
+        'recurrentes', 'transferencias', 'pagosTarjeta', 'eventosContables'
       ];
     }
 
@@ -38,6 +38,72 @@ service cloud.firestore {
         && (!('montoEstimadoMinor' in request.resource.data) || (request.resource.data.montoEstimadoMinor is int && request.resource.data.montoEstimadoMinor >= 0));
     }
 
+    function safeDebtFields() {
+      return (!('tipo_deuda' in request.resource.data) || request.resource.data.tipo_deuda in ['POR_PAGAR', 'POR_COBRAR'])
+        && (!('origen_saldo' in request.resource.data) || request.resource.data.origen_saldo in ['SALDO_INICIAL', 'PRESTAMO_NUEVO'])
+        && (!('principal_confirmado' in request.resource.data) || request.resource.data.principal_confirmado is bool)
+        && (!('cuenta_id' in request.resource.data) || request.resource.data.cuenta_id == null || request.resource.data.cuenta_id is string)
+        && (!('persona_id' in request.resource.data) || request.resource.data.persona_id == null || request.resource.data.persona_id is string)
+        && (!('archivada' in request.resource.data) || request.resource.data.archivada is bool)
+        && (!('montoTotalMinor' in request.resource.data) || !('montoPagadoMinor' in request.resource.data) || request.resource.data.montoPagadoMinor <= request.resource.data.montoTotalMinor);
+    }
+
+    function safeCollectionFields(collection) {
+      return (!('moneda' in request.resource.data) || request.resource.data.moneda in ['PEN', 'USD', 'EUR', 'GBP', 'JPY', 'CLP', 'COP', 'MXN', 'BRL'])
+        && (collection != 'movimientos' || ((!('tipo' in request.resource.data) || request.resource.data.tipo in ['INGRESO', 'GASTO'])
+          && (!('medio_pago' in request.resource.data) || request.resource.data.medio_pago in ['EFECTIVO', 'CUENTA_BANCARIA', 'YAPE', 'PLIN', 'TARJETA_DEBITO', 'TARJETA_CREDITO', 'OTRO'])
+          && (!('montoMinor' in request.resource.data) || request.resource.data.montoMinor > 0)))
+        && (collection != 'transferencias' || ((!('montoMinor' in request.resource.data) || request.resource.data.montoMinor > 0)
+          && (!('cuenta_origen_id' in request.resource.data) || request.resource.data.cuenta_origen_id is string)
+          && (!('cuenta_destino_id' in request.resource.data) || request.resource.data.cuenta_destino_id is string)
+          && (!('cuenta_origen_id' in request.resource.data) || !('cuenta_destino_id' in request.resource.data) || request.resource.data.cuenta_origen_id != request.resource.data.cuenta_destino_id)))
+        && (collection != 'pagosTarjeta' || ((!('montoMinor' in request.resource.data) || request.resource.data.montoMinor > 0)
+          && (!('cuenta_id' in request.resource.data) || request.resource.data.cuenta_id is string)
+          && (!('tarjeta_id' in request.resource.data) || request.resource.data.tarjeta_id is string)))
+        && (collection != 'tarjetas' || !('tipo' in request.resource.data) || request.resource.data.tipo in ['CREDITO', 'DEBITO']);
+    }
+
+    function requiredCreateFields(collection) {
+      return (collection != 'movimientos' || (request.resource.data.keys().hasAll(['tipo', 'medio_pago', 'montoMinor', 'moneda']) && request.resource.data.tipo in ['INGRESO', 'GASTO'] && request.resource.data.montoMinor > 0))
+        && (collection != 'transferencias' || (request.resource.data.keys().hasAll(['cuenta_origen_id', 'cuenta_destino_id', 'montoMinor', 'moneda']) && request.resource.data.montoMinor > 0 && request.resource.data.cuenta_origen_id != request.resource.data.cuenta_destino_id))
+        && (collection != 'pagosTarjeta' || (request.resource.data.keys().hasAll(['cuenta_id', 'tarjeta_id', 'montoMinor', 'moneda']) && request.resource.data.montoMinor > 0))
+        && (collection != 'deudas' || request.resource.data.keys().hasAll(['tipo_deuda', 'origen_saldo', 'principal_confirmado']));
+    }
+
+    function safeAccountingEvent(uid) {
+      return request.resource.data.keys().hasOnly([
+          'cuentaId', 'deudaId', 'operacionColeccion', 'operacionId', 'eventoTipo',
+          'montoDeltaMinor', 'deltaPrincipalMinor', 'deltaResultadoMinor', 'deltaIngresoMinor', 'deltaGastoMinor', 'moneda',
+          'fechaEfectiva', 'impactoResultado', 'componenteDeuda', 'eventoRelacionadoId',
+          'motivo', 'operacionSnapshot', 'registradoEn', 'creadoEn'
+        ])
+        && request.resource.data.keys().hasAll([
+          'cuentaId', 'deudaId', 'operacionColeccion', 'operacionId', 'eventoTipo',
+          'montoDeltaMinor', 'deltaPrincipalMinor', 'deltaResultadoMinor', 'deltaIngresoMinor', 'deltaGastoMinor', 'moneda',
+          'fechaEfectiva', 'impactoResultado', 'componenteDeuda', 'eventoRelacionadoId',
+          'motivo', 'operacionSnapshot', 'registradoEn', 'creadoEn'
+        ])
+        && (request.resource.data.cuentaId == null || (request.resource.data.cuentaId is string && existsAfter(/databases/$(database)/documents/users/$(uid)/cuentas/$(request.resource.data.cuentaId))))
+        && (request.resource.data.deudaId == null || (request.resource.data.deudaId is string && existsAfter(/databases/$(database)/documents/users/$(uid)/deudas/$(request.resource.data.deudaId))))
+        && request.resource.data.operacionColeccion in ['cuentas', 'deudas', 'movimientos', 'transferencias', 'pagosTarjeta']
+        && request.resource.data.operacionId is string
+        && request.resource.data.eventoTipo in ['SALDO_BASE', 'MOVIMIENTO', 'TRANSFERENCIA', 'PAGO_TARJETA', 'PRESTAMO', 'PAGO_PRINCIPAL', 'INTERES', 'COMISION', 'REVERSIÓN', 'AJUSTE']
+        && request.resource.data.montoDeltaMinor is int
+        && request.resource.data.deltaPrincipalMinor is int
+        && request.resource.data.deltaResultadoMinor is int
+        && request.resource.data.deltaIngresoMinor is int
+        && request.resource.data.deltaGastoMinor is int
+        && request.resource.data.moneda in ['PEN', 'USD', 'EUR', 'GBP', 'JPY', 'CLP', 'COP', 'MXN', 'BRL']
+        && request.resource.data.fechaEfectiva is string
+        && request.resource.data.impactoResultado in ['INGRESO', 'GASTO', 'NINGUNO']
+        && (request.resource.data.componenteDeuda == null || request.resource.data.componenteDeuda in ['PRINCIPAL', 'INTERES', 'COMISION'])
+        && (request.resource.data.eventoRelacionadoId == null || request.resource.data.eventoRelacionadoId is string)
+        && (request.resource.data.motivo == null || request.resource.data.motivo is string)
+        && request.resource.data.operacionSnapshot is map
+        && request.resource.data.registradoEn == request.time
+        && request.resource.data.creadoEn == request.time;
+    }
+
     match /users/{uid} {
       allow read: if signedInAs(uid);
       allow create: if signedInAs(uid) && safeProfile();
@@ -47,10 +113,18 @@ service cloud.firestore {
 
       match /{collection}/{documentId} {
         allow read: if signedInAs(uid) && allowedCollection(collection);
-        allow create: if signedInAs(uid) && allowedCollection(collection) && safeMoneyFields();
-        allow update: if signedInAs(uid) && allowedCollection(collection) && safeMoneyFields()
+        allow create: if signedInAs(uid) && allowedCollection(collection) && collection != 'eventosContables' && safeMoneyFields() && safeCollectionFields(collection) && requiredCreateFields(collection) && (collection != 'deudas' || safeDebtFields())
+          && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool);
+        allow update: if signedInAs(uid) && allowedCollection(collection) && collection != 'eventosContables' && safeMoneyFields() && safeCollectionFields(collection) && (collection != 'deudas' || safeDebtFields())
+          && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool)
           && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if signedInAs(uid) && allowedCollection(collection);
+        allow delete: if signedInAs(uid) && collection in ['personas', 'propietarios', 'instituciones', 'categorias', 'presupuestos', 'metas', 'recurrentes'];
+      }
+
+      match /eventosContables/{eventId} {
+        allow read: if signedInAs(uid);
+        allow create: if signedInAs(uid) && safeAccountingEvent(uid);
+        allow update, delete: if false;
       }
     }
 

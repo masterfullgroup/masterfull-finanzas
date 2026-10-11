@@ -42,13 +42,53 @@ La vista del comprobante usa `getBlob`, que requiere configurar CORS para el ori
 
 Los documentos pertenecen al usuario autenticado:
 
-`users/{uid}` (perfil) y subcolecciones `cuentas`, `tarjetas`, `personas`, `propietarios`, `instituciones`, `categorias`, `movimientos`, `presupuestos`, `metas`, `deudas`, `recurrentes`, `transferencias` y `pagosTarjeta`.
+`users/{uid}` (perfil) y subcolecciones `cuentas`, `tarjetas`, `personas`, `propietarios`, `instituciones`, `categorias`, `movimientos`, `presupuestos`, `metas`, `deudas`, `recurrentes`, `transferencias`, `pagosTarjeta` y `eventosContables`.
+
+### Libro de eventos y compatibilidad contable
+
+`deudas` conserva sus campos actuales y admite `tipo_deuda` (`POR_PAGAR`/`POR_COBRAR`), `origen_saldo` (`SALDO_INICIAL`/`PRESTAMO_NUEVO`), `principal_confirmado` (boolean), `cuenta_id`, `persona_id` y `fecha_operacion`. Los importes monetarios existentes siguen codificándose en `montoTotalMinor` y `montoPagadoMinor`. En deudas antiguas esos importes no se reinterpretan automáticamente como principal: la persona debe confirmar explícitamente esa semántica antes de registrar amortizaciones. No se infiere si una deuda histórica es por pagar o cobrar ni si el importe incluye intereses previos.
+
+`eventosContables` es append-only y registra `cuentaId`, `deudaId`, `operacionColeccion`, `operacionId`, `eventoTipo`, `montoDeltaMinor`, `deltaPrincipalMinor`, `deltaResultadoMinor`, `deltaIngresoMinor`, `deltaGastoMinor`, `moneda`, `fechaEfectiva`, `impactoResultado`, `componenteDeuda`, `eventoRelacionadoId`, `motivo`, `operacionSnapshot`, `registradoEn` y `creadoEn`. Las fechas efectivas se conservan al corregir; la hora del servidor registra cuándo se hizo la corrección. Las anulaciones agregan reversión y conservan el documento y sus comprobantes.
+
+Una línea base `SALDO_BASE` se genera al crear una cuenta con el saldo inicial ingresado. Para cuentas existentes, la acción **Confirmar corte** registra una sola línea base si el saldo confirmado coincide con el saldo actual guardado; no cambia el saldo. Sin línea base confirmada, los saldos inicial/final de ese periodo se presentan como no disponibles. No se reconstruyen ni rellenan periodos anteriores a la fecha efectiva de corte.
+
+Préstamos y pagos de principal generan efectivo y cambios al principal, sin ingresos/gastos reconocidos. Intereses y comisiones generan eventos separados. Las transferencias usan dos deltas de cuenta vinculados al mismo `operacionId`; el flujo consolidado excluye ambas piernas. Los documentos fuente se marcan con `eventoContableId` para que Reportes use el libro de eventos sin contar dos veces el mismo movimiento. Las operaciones heredadas sin dicho identificador continúan leyéndose desde sus colecciones actuales.
+
+### Preparación y migración (sin ejecutar automáticamente)
+
+1. Clasificar manualmente cada deuda antigua y confirmar si el saldo guardado representa solo principal; sin esa confirmación se permiten registros de interés/comisión, pero se bloquea la amortización de principal. Al asignar `SALDO_INICIAL` no se crea un movimiento de efectivo.
+2. Confirmar por cuenta los saldos y fechas de corte. Las cuentas existentes no reciben una línea base hasta confirmarla desde **Cuentas → Confirmar corte**.
+3. Revisar y respaldar la información antes de publicar. No hay backfill automático de operaciones o saldos previos: el historial mutable no permite garantizar una reconstrucción fiable.
+4. Publicar primero reglas e índices aprobados, esperar a que los índices terminen de construirse y después desplegar el cliente. Esta tarea solo preparó los archivos locales.
+5. Tras publicar, reconciliar los saldos de cuentas, tarjetas y deudas contra los eventos nuevos antes de confirmar el corte operativo.
+
+Despliegue futuro, únicamente con autorización específica:
+
+```sh
+npx firebase-tools deploy --project masterfull-finanzas --only firestore:indexes
+npx firebase-tools deploy --project masterfull-finanzas --only firestore:rules
+```
+
+Las reglas propuestas hacen inmutables los eventos y validan su estructura, UID y vínculos existentes. Como la arquitectura sigue siendo cliente estático, Firestore Rules no pueden probar por sí solas que un usuario no haya escrito un evento falso o alterado su propio saldo actual. La escritura normal del cliente es transaccional, pero una garantía contra manipulación del propio usuario exigiría un servicio confiable del lado del servidor y queda fuera de esta etapa.
 
 El resumen pagina sus listas, limita los datos de pantalla y usa agregaciones del servidor para totales mensuales filtrados por tipo, moneda y fecha. Las listas cargan páginas de 50 documentos; las referencias del formulario cargan como máximo 100 por entidad. No hay listeners en tiempo real. Si crecen más allá de ese límite las referencias deberán contar con búsqueda/paginación dedicada. Firestore puede solicitar índices adicionales si se agregan filtros compuestos; el mensaje de error incluye un enlace para crearlos y el índice debe documentarse aquí antes de desplegarlo.
 
 ## Ejecución local
 
 No requiere Django, Python ni instalar dependencias en el repositorio. Completa primero `firebase-config.js` y publica la carpeta con un servidor estático (por ejemplo, la extensión Live Server de VS Code o `npx http-server .`). Abre la URL local, habilitada como dominio autorizado en Firebase. Abrir `index.html` directamente como `file://` no funciona porque los módulos ES requieren un servidor HTTP.
+
+### Pruebas locales de Firestore
+
+Las reglas pueden probarse sin apuntar al proyecto real: el script usa explícitamente el proyecto ficticio `demo-masterfull-local`, y el emulador de Firestore escucha solo en `127.0.0.1:8080`. Instala Node.js, Firebase CLI y Java 21 o superior; luego ejecuta:
+
+```sh
+npm install
+npm run test:finance
+npm run test:indexes
+npm run test:rules
+```
+
+`npm run test:rules` arranca el emulador temporalmente, aplica `firestore.rules`, ejecuta pruebas con usuarios ficticios y lo apaga. `npm test` ejecuta las tres suites. No se configura Authentication Emulator porque los tests inyectan identidades simuladas mediante `@firebase/rules-unit-testing`; tampoco se usa una cuenta Firebase real.
 
 Para revisar los cambios de JavaScript sin conectar a Firebase:
 

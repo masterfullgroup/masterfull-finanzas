@@ -1,0 +1,61 @@
+name: Pruebas locales de Masterfull Finanzas
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "codex/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Finanzas, navegación, índices y reglas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v7
+
+      - name: Configurar Node.js LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          check-latest: true
+
+      - name: Configurar Java 21 para Firebase Emulator
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Instalar dependencias
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            if npm ci; then
+              echo "Dependencias instaladas desde package-lock.json."
+            else
+              echo "::warning::npm ci no pudo usar el lockfile; se intentará npm install."
+              npm install
+            fi
+          else
+            npm install
+          fi
+
+      - name: Pruebas financieras
+        run: npm run test:finance
+
+      - name: Pruebas de navegación
+        run: npm run test:navigation
+
+      - name: Pruebas de índices
+        run: npm run test:indexes
+
+      - name: Pruebas de reglas con Firestore Emulator
+        run: npm run test:rules
