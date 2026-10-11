@@ -31,6 +31,10 @@ function appendAccountingEvent(transaction, eventRef, fs, event) {
   transaction.set(eventRef, { ...event, registradoEn: fs.serverTimestamp(), creadoEn: fs.serverTimestamp() });
 }
 
+function accountingPointer(eventId, operationId) {
+  return { ultimoEventoContableId: eventId, ultimaOperacionContableId: operationId };
+}
+
 function cashMovementEvent({ operationCollection, operationId, operationType, accountId, currency, effectiveDate, cashDeltaMinor, principalDeltaMinor = 0, impact = "NINGUNO", resultDeltaMinor = null, resultBasisImpact = impact, component = null, relatedEventId = null, reason = null, snapshot = null }) {
   const resultDelta = resultDeltaMinor == null ? (impact === "INGRESO" ? Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : impact === "GASTO" ? -Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : 0) : Number(resultDeltaMinor);
   return {
@@ -123,6 +127,7 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
       const stableData = { ...data };
       if (!baselineSnapshot.empty) stableData.fecha_saldo_inicial = baselineSnapshot.docs[0].data().fechaEfectiva;
       const delta = data.saldoInicialMinor - Number(previous.saldoInicialMinor || 0);
+      if (delta && baselineSnapshot.empty) throw new Error("No se puede ajustar el saldo inicial sin una línea base confirmada.");
       transaction.update(docRef, { ...stableData, saldoActualMinor: Number(previous.saldoActualMinor ?? previous.saldoInicialMinor ?? 0) + delta, createdAt: previous.createdAt, updatedAt: fs.serverTimestamp() });
       if (!baselineSnapshot.empty && delta) {
         const baseline = baselineSnapshot.docs[0];
@@ -132,15 +137,21 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
           cashDeltaMinor: delta, impact: "NINGUNO", relatedEventId: baseline.id,
           reason: "Ajuste de saldo inicial confirmado", snapshot: { saldoInicialAnteriorMinor: previous.saldoInicialMinor, saldoInicialNuevoMinor: data.saldoInicialMinor },
         }));
+        transaction.update(docRef, accountingPointer(baselineRef.id, id));
       }
     });
   } else if (id && name === "tarjetas" && data.saldoInicialUsadoMinor !== undefined) {
+    const eventRef = newAccountingEventRef(db, fs, uid);
     await fs.runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(docRef);
       if (!snapshot.exists()) throw new Error("La tarjeta ya no existe. Actualiza la pantalla.");
       const previous = snapshot.data();
       const delta = data.saldoInicialUsadoMinor - Number(previous.saldoInicialUsadoMinor || 0);
       transaction.update(docRef, { ...data, utilizadoMinor: Math.max(0, Number(previous.utilizadoMinor ?? previous.saldoInicialUsadoMinor ?? 0) + delta), createdAt: previous.createdAt, updatedAt: fs.serverTimestamp() });
+      if (delta) {
+        appendAccountingEvent(transaction, eventRef, fs, cashMovementEvent({ operationCollection: "tarjetas", operationId: id, operationType: "AJUSTE", accountId: null, currency: previous.moneda || "PEN", effectiveDate: data.fecha_saldo_inicial || value.fecha_saldo_inicial || new Date().toISOString().slice(0, 10), cashDeltaMinor: 0, principalDeltaMinor: delta, impact: "NINGUNO", reason: "Ajuste de saldo inicial confirmado", snapshot: { tarjeta_id: id, saldoInicialAnteriorMinor: previous.saldoInicialUsadoMinor || 0, saldoInicialNuevoMinor: data.saldoInicialUsadoMinor } }));
+        transaction.update(docRef, accountingPointer(eventRef.id, id));
+      }
     });
   } else if (id) await fs.updateDoc(docRef, data);
   else if (name === "cuentas") {
@@ -154,7 +165,17 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
         currency: value.moneda || "PEN", effectiveDate: value.fecha_saldo_inicial, cashDeltaMinor: balanceMinor,
         impact: "NINGUNO", snapshot: { saldoConfirmado: true },
       }));
+      transaction.update(docRef, accountingPointer(baselineRef.id, docRef.id));
     });
+  } else if (name === "tarjetas" && Number(data.saldoInicialUsadoMinor || 0) > 0) {
+    const baselineRef = newAccountingEventRef(db, fs, uid);
+    await fs.runTransaction(db, async (transaction) => {
+      transaction.set(docRef, { ...data, utilizadoMinor: Number(data.saldoInicialUsadoMinor), createdAt: fs.serverTimestamp() });
+      appendAccountingEvent(transaction, baselineRef, fs, cashMovementEvent({ operationCollection: "tarjetas", operationId: docRef.id, operationType: "SALDO_BASE", accountId: null, currency: value.moneda || "PEN", effectiveDate: value.fecha_saldo_inicial || new Date().toISOString().slice(0, 10), cashDeltaMinor: 0, principalDeltaMinor: Number(data.saldoInicialUsadoMinor), impact: "NINGUNO", snapshot: { tarjeta_id: docRef.id, saldoConfirmado: true } }));
+      transaction.update(docRef, accountingPointer(baselineRef.id, docRef.id));
+    });
+  } else if (name === "tarjetas") {
+    await fs.setDoc(docRef, { ...data, utilizadoMinor: Number(data.saldoInicialUsadoMinor || 0), createdAt: fs.serverTimestamp() });
   } else await fs.setDoc(docRef, { ...data, createdAt: fs.serverTimestamp() });
   return decode(name, docRef.id, { ...data, ...(id ? {} : { createdAt: new Date() }) });
 }
@@ -182,13 +203,14 @@ export async function saveDebt(uid, value, id = null) {
       const cashDeltaMinor = value.tipo_deuda === "POR_PAGAR" ? amountMinor : -amountMinor;
       const balance = Number(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0) + cashDeltaMinor;
       transaction.set(debtRef, { ...data, montoPagadoMinor: 0, estado: "PENDIENTE", createdAt: fs.serverTimestamp() });
-      transaction.update(accountRef, { saldoActualMinor: balance, updatedAt: fs.serverTimestamp() });
       appendAccountingEvent(transaction, eventRef, fs, cashMovementEvent({
         operationCollection: "deudas", operationId: debtRef.id, operationType: "PRESTAMO", accountId: value.cuenta_id,
         currency: value.moneda, effectiveDate: value.fecha_operacion,
         cashDeltaMinor, principalDeltaMinor: amountMinor, impact: "NINGUNO", component: "PRINCIPAL",
         snapshot: { ...data, deuda_id: debtRef.id, montoTotalMinor: amountMinor },
       }));
+      transaction.update(debtRef, accountingPointer(eventRef.id, debtRef.id));
+      transaction.update(accountRef, { saldoActualMinor: balance, ...accountingPointer(eventRef.id, debtRef.id), updatedAt: fs.serverTimestamp() });
     });
   } else if (id) {
     await fs.runTransaction(db, async (transaction) => {
@@ -204,7 +226,23 @@ export async function saveDebt(uid, value, id = null) {
       transaction.update(debtRef, { ...data, createdAt: previous.createdAt, updatedAt: fs.serverTimestamp() });
     });
   } else {
-    await fs.setDoc(debtRef, { ...data, montoPagadoMinor: Number(data.montoPagadoMinor || 0), estado: value.estado || "PENDIENTE", createdAt: fs.serverTimestamp() });
+    const effectiveDate = value.fecha_operacion;
+    if (!effectiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) throw new Error("Indica la fecha efectiva del saldo confirmado.");
+    const eventRef = newAccountingEventRef(db, fs, uid);
+    await fs.runTransaction(db, async (transaction) => {
+      const paidMinor = Number(data.montoPagadoMinor || 0);
+      transaction.set(debtRef, {
+        ...data, montoPagadoMinor: paidMinor, estado: value.estado || "PENDIENTE",
+        ...accountingPointer(eventRef.id, debtRef.id), createdAt: fs.serverTimestamp(),
+      });
+      appendAccountingEvent(transaction, eventRef, fs, cashMovementEvent({
+        operationCollection: "deudas", operationId: debtRef.id, operationType: "SALDO_BASE", accountId: null,
+        currency: value.moneda || "PEN", effectiveDate, cashDeltaMinor: 0,
+        principalDeltaMinor: data.principal_confirmado ? Number(data.montoTotalMinor || 0) : 0,
+        impact: "NINGUNO", component: "PRINCIPAL",
+        snapshot: { ...data, deuda_id: debtRef.id, montoTotalMinor: Number(data.montoTotalMinor || 0), saldoConfirmado: Boolean(data.principal_confirmado) },
+      }));
+    });
   }
   return debtRef.id;
 }
@@ -222,10 +260,12 @@ export async function establishAccountBaseline(uid, accountId, confirmedBalance,
     if (!existing.empty) { created = false; return; }
     const amountMinor = toMinorUnits(confirmedBalance, accountSnapshot.data().moneda || "PEN");
     if (amountMinor !== Number(accountSnapshot.data().saldoActualMinor ?? accountSnapshot.data().saldoInicialMinor ?? 0)) throw new Error("El saldo confirmado debe coincidir con el saldo actual guardado; no se alteró la cuenta.");
-    appendAccountingEvent(transaction, newAccountingEventRef(db, fs, uid), fs, cashMovementEvent({
+    const baselineEventRef = newAccountingEventRef(db, fs, uid);
+    appendAccountingEvent(transaction, baselineEventRef, fs, cashMovementEvent({
       operationCollection: "cuentas", operationId: accountId, operationType: "SALDO_BASE", accountId,
       currency: accountSnapshot.data().moneda || "PEN", effectiveDate, cashDeltaMinor: amountMinor, impact: "NINGUNO", snapshot: { saldoConfirmado: true },
     }));
+    transaction.update(accountRef, accountingPointer(baselineEventRef.id, accountId));
   });
   return created;
 }
@@ -265,16 +305,17 @@ export async function saveDebtSettlement(uid, debtId, values) {
       feeMinor ? { index: 2, type: "COMISION", component: "COMISION", amount: feeMinor, cash: fee.cashDeltaMinor, principal: 0, impact: fee.impact } : null,
     ].filter(Boolean);
     const balance = Number(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0) + cashDelta;
-    transaction.update(accountRef, { saldoActualMinor: balance, updatedAt: fs.serverTimestamp() });
-    transaction.update(debtRef, { montoPagadoMinor: newPaid, estado: newPaid >= total ? "PAGADA" : "PENDIENTE", updatedAt: fs.serverTimestamp() });
+    const pointerEvent = events.at(-1);
     for (const [position, item] of events.entries()) {
       appendAccountingEvent(transaction, eventRefs[item.index], fs, cashMovementEvent({
         operationCollection: "deudas", operationId, operationType: item.type, accountId: values.cuenta_id,
         currency, effectiveDate: values.fecha, cashDeltaMinor: item.cash, principalDeltaMinor: item.principal,
         impact: item.impact, resultDeltaMinor: item.impact === "INGRESO" ? item.amount : item.impact === "GASTO" ? -item.amount : 0,
-        component: item.component, snapshot: { deudaId: debtId, principalMinor, interestMinor, feeMinor, descripcion: values.descripcion || "" },
+        component: item.component, snapshot: { deudaId: debtId, principalMinor, interestMinor, feeMinor, cambioEfectivoTotalMinor: cashDelta, descripcion: values.descripcion || "" },
       }));
     }
+    transaction.update(accountRef, { saldoActualMinor: balance, ...accountingPointer(eventRefs[pointerEvent.index].id, operationId), updatedAt: fs.serverTimestamp() });
+    transaction.update(debtRef, { montoPagadoMinor: newPaid, estado: newPaid >= total ? "PAGADA" : "PENDIENTE", ...accountingPointer(eventRefs[pointerEvent.index].id, operationId), updatedAt: fs.serverTimestamp() });
   });
   return operationId;
 }
@@ -421,10 +462,15 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
         appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.from, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
         appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.to, currency: value.moneda, effectiveDate, cashDeltaMinor: -old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
       }
-      appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_origen_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
-      appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_destino_id, currency: value.moneda, effectiveDate, cashDeltaMinor: amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      const sourceEventRef = eventRefs[eventIndex++];
+      const destinationEventRef = eventRefs[eventIndex++];
+      appendAccountingEvent(transaction, sourceEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_origen_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      appendAccountingEvent(transaction, destinationEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_destino_id, currency: value.moneda, effectiveDate, cashDeltaMinor: amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
       transaction.set(docRef, { ...data, ...(legacyAnchor ? { legacyEventAnchor: true, legacyEventAnchorSnapshot: legacyAnchor } : {}), fecha: effectiveDate, montoMinor: amount, eventoContableId: eventRefs[eventIndex - 1].id, createdAt: previousRaw.createdAt || fs.serverTimestamp() });
-      for (const accountId of ids) transaction.update(accountRefs[ids.indexOf(accountId)], { saldoActualMinor: balanceChanges.get(accountId), updatedAt: fs.serverTimestamp() });
+      for (const accountId of ids) {
+        const eventRef = accountId === value.cuenta_origen_id ? sourceEventRef : accountId === value.cuenta_destino_id ? destinationEventRef : eventRefs[old?.from === accountId ? 0 : 1];
+        transaction.update(accountRefs[ids.indexOf(accountId)], { saldoActualMinor: balanceChanges.get(accountId), ...accountingPointer(eventRef.id, docRef.id), updatedAt: fs.serverTimestamp() });
+      }
     });
   } else if (collectionName === "pagosTarjeta") {
     const amount = toMinorUnits(value.monto, value.moneda || "PEN");
@@ -452,10 +498,11 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
       cardChanges.set(value.tarjeta_id, cardChanges.get(value.tarjeta_id) - amount);
       const effectiveDate = oldRow?.fecha || value.fecha;
       if (old) appendAccountingEvent(transaction, eventRefs[0], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.account, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, principalDeltaMinor: old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
-      appendAccountingEvent(transaction, eventRefs[old ? 1 : 0], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "PAGO_TARJETA", accountId: value.cuenta_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, principalDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      const paymentEventRef = eventRefs[old ? 1 : 0];
+      appendAccountingEvent(transaction, paymentEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "PAGO_TARJETA", accountId: value.cuenta_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, principalDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, tarjeta_id: value.tarjeta_id, legacyEventAnchor: Boolean(legacyAnchor) } }));
       transaction.set(docRef, { ...data, ...(legacyAnchor ? { legacyEventAnchor: true, legacyEventAnchorSnapshot: legacyAnchor } : {}), fecha: effectiveDate, montoMinor: amount, eventoContableId: eventRefs[old ? 1 : 0].id, createdAt: previousRaw.createdAt || fs.serverTimestamp() });
-      accountIds.forEach((accountId, index) => transaction.update(accountRefs[index], { saldoActualMinor: accountChanges.get(accountId), updatedAt: fs.serverTimestamp() }));
-      cardIds.forEach((cardId, index) => transaction.update(cardRefs[index], { utilizadoMinor: cardChanges.get(cardId), updatedAt: fs.serverTimestamp() }));
+      accountIds.forEach((accountId, index) => transaction.update(accountRefs[index], { saldoActualMinor: accountChanges.get(accountId), ...accountingPointer(accountId === value.cuenta_id ? paymentEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
+      cardIds.forEach((cardId, index) => transaction.update(cardRefs[index], { utilizadoMinor: cardChanges.get(cardId), ...accountingPointer(cardId === value.tarjeta_id ? paymentEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
     });
   } else {
     throw new Error("Tipo de operación contable no compatible.");
@@ -529,15 +576,16 @@ export async function saveMovement(uid, value, id = value.id || null) {
       relatedEventId: operationSnapshot.data()?.eventoContableId || null,
       reason: "Corrección vinculada a la operación original", snapshot: { ...oldRow, cuenta_id: old.accountId },
     }));
-    appendAccountingEvent(transaction, eventRefs[eventIndex], fs, cashMovementEvent({
+    const movementEventRef = eventRefs[eventIndex];
+    appendAccountingEvent(transaction, movementEventRef, fs, cashMovementEvent({
       operationCollection: "movimientos", operationId: docRef.id, operationType: "MOVIMIENTO", accountId: current.accountId,
       currency: value.moneda, effectiveDate, cashDeltaMinor: current.delta, principalDeltaMinor: current.cardDelta,
       impact: value.impacto_resultado || value.tipo, relatedEventId: operationSnapshot.data()?.eventoContableId || null,
       snapshot: { ...data, cuenta_id: current.accountId, montoMinor: amount, fecha: effectiveDate, legacyEventAnchor: Boolean(legacyAnchor) },
     }));
     transaction.set(docRef, { ...data, cuenta_id: current.accountId, ...(legacyAnchor ? { legacyEventAnchor: true, legacyEventAnchorSnapshot: legacyAnchor } : {}), fecha: effectiveDate, montoMinor: amount, eventoContableId: eventRefs[eventIndex].id, createdAt: previousRaw.createdAt || fs.serverTimestamp() });
-    accountIds.forEach((accountId, index) => transaction.update(accountRefs[index], { saldoActualMinor: accountChanges.get(accountId), updatedAt: fs.serverTimestamp() }));
-    cardIds.forEach((cardId, index) => transaction.update(cardRefs[index], { utilizadoMinor: Math.max(0, cardChanges.get(cardId)), updatedAt: fs.serverTimestamp() }));
+    accountIds.forEach((accountId, index) => transaction.update(accountRefs[index], { saldoActualMinor: accountChanges.get(accountId), ...accountingPointer(accountId === current.accountId ? movementEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
+    cardIds.forEach((cardId, index) => transaction.update(cardRefs[index], { utilizadoMinor: Math.max(0, cardChanges.get(cardId)), ...accountingPointer(cardId === current.cardId ? movementEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
   });
   return docRef.id;
 }
@@ -567,14 +615,14 @@ export async function deleteLedgerEntry(uid, collectionName, id) {
     const accountBalance = (index) => Number(accountDocs[index].data()?.saldoActualMinor ?? accountDocs[index].data()?.saldoInicialMinor ?? 0);
     const cardBalance = (index) => Number(cardDocs[index].data()?.utilizadoMinor ?? cardDocs[index].data()?.saldoInicialUsadoMinor ?? 0);
     if (collectionName === "transferencias") {
-      transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) + amount, updatedAt: fs.serverTimestamp() });
-      transaction.update(accountRefs[1], { saldoActualMinor: accountBalance(1) - amount, updatedAt: fs.serverTimestamp() });
+      transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) + amount, ...accountingPointer(eventRefs[0].id, id), updatedAt: fs.serverTimestamp() });
+      transaction.update(accountRefs[1], { saldoActualMinor: accountBalance(1) - amount, ...accountingPointer(eventRefs[1].id, id), updatedAt: fs.serverTimestamp() });
     } else if (collectionName === "pagosTarjeta") {
-      transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) + amount, updatedAt: fs.serverTimestamp() });
-      transaction.update(cardRefs[0], { utilizadoMinor: cardBalance(0) + amount, updatedAt: fs.serverTimestamp() });
+      transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) + amount, ...accountingPointer(eventRefs[0].id, id), updatedAt: fs.serverTimestamp() });
+      transaction.update(cardRefs[0], { utilizadoMinor: cardBalance(0) + amount, ...accountingPointer(eventRefs[0].id, id), updatedAt: fs.serverTimestamp() });
     } else if (collectionName === "movimientos") {
-      if (accountRefs.length) transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) - (previous.tipo === "INGRESO" ? amount : -amount), updatedAt: fs.serverTimestamp() });
-      if (cardRefs.length && previous.medio_pago === "TARJETA_CREDITO") transaction.update(cardRefs[0], { utilizadoMinor: Math.max(0, cardBalance(0) - amount), updatedAt: fs.serverTimestamp() });
+      if (accountRefs.length) transaction.update(accountRefs[0], { saldoActualMinor: accountBalance(0) - (previous.tipo === "INGRESO" ? amount : -amount), ...accountingPointer(eventRefs[0].id, id), updatedAt: fs.serverTimestamp() });
+      if (cardRefs.length && previous.medio_pago === "TARJETA_CREDITO") transaction.update(cardRefs[0], { utilizadoMinor: Math.max(0, cardBalance(0) - amount), ...accountingPointer(eventRefs[0].id, id), updatedAt: fs.serverTimestamp() });
     } else throw new Error("Tipo de operación no compatible.");
     const effectiveDate = previous.fecha;
     const sourceEventId = operationSnapshot.data().eventoContableId || null;

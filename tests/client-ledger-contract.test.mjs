@@ -25,3 +25,14 @@ test("cuentas, tarjetas y deudas se archivan en vez de eliminarse", () => {
   assert.match(body, /name === "tarjetas"/);
   assert.match(body, /transaction\.delete\(targetRef\)/, "el borrado restante se limita a datos de referencia");
 });
+
+test("las escrituras de saldos vinculan puntero y evento en la transacción", () => {
+  for (const name of ["saveDocument", "saveDebt", "saveDebtSettlement", "saveLedgerEntry", "saveMovement", "deleteLedgerEntry", "establishAccountBaseline"]) {
+    const start = dataModule.indexOf(`export async function ${name}`);
+    assert.ok(start >= 0, `debe existir ${name}`);
+    const next = dataModule.indexOf("\nexport ", start + 1);
+    const body = dataModule.slice(start, next < 0 ? undefined : next);
+    assert.match(body, /accountingPointer\(/, `${name} debe escribir sus punteros dentro de su operación transaccional`);
+    assert.match(body, /appendAccountingEvent\(/, `${name} debe registrar evento contable`);
+  }
+});

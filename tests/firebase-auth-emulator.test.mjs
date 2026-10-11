@@ -41,10 +41,22 @@ after(async () => Promise.all(apps.map((app) => deleteApp(app))));
 
 test("la cuenta efímera de Auth Emulator solo accede a sus documentos ficticios", async () => {
   const ownAccount = doc(aliceDb, `users/${aliceUid}/cuentas/test-account`);
-  await setDoc(ownAccount, {
+  const baseEventId = "test-account-baseline";
+  const baseline = writeBatch(aliceDb);
+  baseline.set(ownAccount, {
     nombre: "Cuenta ficticia de prueba", moneda: "PEN", saldoInicialMinor: 50_000,
-    saldoActualMinor: 50_000, createdAt: serverTimestamp(),
+    saldoActualMinor: 50_000, ultimoEventoContableId: baseEventId,
+    ultimaOperacionContableId: "test-account", createdAt: serverTimestamp(),
   });
+  baseline.set(doc(aliceDb, `users/${aliceUid}/eventosContables/${baseEventId}`), {
+    cuentaId: "test-account", deudaId: null, operacionColeccion: "cuentas", operacionId: "test-account",
+    eventoTipo: "SALDO_BASE", montoDeltaMinor: 50_000, deltaPrincipalMinor: 0,
+    deltaResultadoMinor: 0, deltaIngresoMinor: 0, deltaGastoMinor: 0, moneda: "PEN",
+    fechaEfectiva: "2026-10-01", impactoResultado: "NINGUNO", componenteDeuda: null,
+    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { saldoConfirmado: true },
+    registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
+  });
+  await baseline.commit();
   assert.equal((await getDoc(ownAccount)).exists(), true);
 
   const foreignAccount = doc(bobDb, `users/${aliceUid}/cuentas/test-account`);
@@ -59,7 +71,7 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
   const originalEventRef = doc(aliceDb, `users/${aliceUid}/eventosContables/test-income-event`);
   const first = writeBatch(aliceDb);
   first.set(movementRef, {
-    tipo: "INGRESO", medio_pago: "EFECTIVO", montoMinor: 12_500, moneda: "PEN",
+    tipo: "INGRESO", medio_pago: "EFECTIVO", montoMinor: 12_500, moneda: "PEN", cuenta_id: "test-account",
     fecha: "2026-10-01", eventoContableId: originalEventRef.id,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
   });
@@ -68,15 +80,16 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
     eventoTipo: "MOVIMIENTO", montoDeltaMinor: 12_500, deltaPrincipalMinor: 0,
     deltaResultadoMinor: 12_500, deltaIngresoMinor: 12_500, deltaGastoMinor: 0, moneda: "PEN",
     fechaEfectiva: "2026-10-01", impactoResultado: "INGRESO", componenteDeuda: null,
-    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { tipo: "INGRESO", montoMinor: 12_500 },
+    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 12_500 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
-  first.update(accountRef, { saldoActualMinor: 62_500, updatedAt: serverTimestamp() });
+  first.update(accountRef, { saldoActualMinor: 62_500, ultimoEventoContableId: originalEventRef.id, ultimaOperacionContableId: movementRef.id, updatedAt: serverTimestamp() });
   await first.commit();
 
   const correction = writeBatch(aliceDb);
-  correction.update(movementRef, { montoMinor: 14_000, eventoAnulacionId: "test-reversal", updatedAt: serverTimestamp() });
-  correction.update(accountRef, { saldoActualMinor: 64_000, updatedAt: serverTimestamp() });
+  const replacementEventId = "test-replacement-event";
+  correction.update(movementRef, { montoMinor: 14_000, eventoContableId: replacementEventId, updatedAt: serverTimestamp() });
+  correction.update(accountRef, { saldoActualMinor: 64_000, ultimoEventoContableId: replacementEventId, ultimaOperacionContableId: movementRef.id, updatedAt: serverTimestamp() });
   correction.set(doc(aliceDb, `users/${aliceUid}/eventosContables/test-reversal`), {
     cuentaId: "test-account", deudaId: null, operacionColeccion: "movimientos", operacionId: movementRef.id,
     eventoTipo: "REVERSIÓN", montoDeltaMinor: -12_500, deltaPrincipalMinor: 0,
@@ -84,6 +97,15 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
     fechaEfectiva: "2026-10-01", impactoResultado: "NINGUNO", componenteDeuda: null,
     eventoRelacionadoId: originalEventRef.id, motivo: "Corrección ficticia de prueba",
     operacionSnapshot: { tipo: "INGRESO", montoMinor: 12_500 },
+    registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
+  });
+  correction.set(doc(aliceDb, `users/${aliceUid}/eventosContables/${replacementEventId}`), {
+    cuentaId: "test-account", deudaId: null, operacionColeccion: "movimientos", operacionId: movementRef.id,
+    eventoTipo: "MOVIMIENTO", montoDeltaMinor: 14_000, deltaPrincipalMinor: 0,
+    deltaResultadoMinor: 14_000, deltaIngresoMinor: 14_000, deltaGastoMinor: 0, moneda: "PEN",
+    fechaEfectiva: "2026-10-01", impactoResultado: "INGRESO", componenteDeuda: null,
+    eventoRelacionadoId: originalEventRef.id, motivo: null,
+    operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 14_000 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
   await correction.commit();

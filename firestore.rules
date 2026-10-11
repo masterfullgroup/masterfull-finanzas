@@ -70,7 +70,102 @@ service cloud.firestore {
         && (collection != 'deudas' || request.resource.data.keys().hasAll(['tipo_deuda', 'origen_saldo', 'principal_confirmado']));
     }
 
-    function safeAccountingEvent(uid) {
+    function eventPath(uid, eventId) {
+      return /databases/$(database)/documents/users/$(uid)/eventosContables/$(eventId);
+    }
+
+    function validBalancePointer(uid, collection, documentId, data) {
+      return data.ultimoEventoContableId is string
+        && data.ultimaOperacionContableId is string
+        && !exists(eventPath(uid, data.ultimoEventoContableId))
+        && existsAfter(eventPath(uid, data.ultimoEventoContableId))
+        && getAfter(eventPath(uid, data.ultimoEventoContableId)).data.operacionId == data.ultimaOperacionContableId
+        && ((collection == 'cuentas' && getAfter(eventPath(uid, data.ultimoEventoContableId)).data.cuentaId == documentId)
+          || (collection == 'tarjetas' && getAfter(eventPath(uid, data.ultimoEventoContableId)).data.operacionSnapshot.get('tarjeta_id', null) == documentId)
+          || (collection == 'deudas' && getAfter(eventPath(uid, data.ultimoEventoContableId)).data.deudaId == documentId));
+    }
+
+    function balanceChangeHasEvent(uid, collection, documentId) {
+      let afterData = request.resource.data;
+      return validBalancePointer(uid, collection, documentId, afterData)
+        && (collection != 'cuentas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.cuentaId == documentId)
+        && (collection != 'tarjetas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.operacionSnapshot.get('tarjeta_id', null) == documentId)
+        && (collection != 'deudas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.operacionSnapshot.get('deudaId', null) == documentId);
+    }
+
+    function ledgerEventValid(uid, collection, documentId, data) {
+      return data.eventoContableId is string
+        && !exists(eventPath(uid, data.eventoContableId))
+        && existsAfter(eventPath(uid, data.eventoContableId))
+        && getAfter(eventPath(uid, data.eventoContableId)).data.operacionColeccion == collection
+        && getAfter(eventPath(uid, data.eventoContableId)).data.operacionId == documentId
+        && ((collection == 'movimientos' && getAfter(eventPath(uid, data.eventoContableId)).data.eventoTipo == 'MOVIMIENTO'
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.montoMinor == data.montoMinor
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.tipo == data.tipo
+              && getAfter(eventPath(uid, data.eventoContableId)).data.cuentaId == data.get('cuenta_id', null))
+          || (collection == 'transferencias' && getAfter(eventPath(uid, data.eventoContableId)).data.eventoTipo == 'TRANSFERENCIA'
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.montoMinor == data.montoMinor
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.cuenta_origen_id == data.cuenta_origen_id
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.cuenta_destino_id == data.cuenta_destino_id)
+          || (collection == 'pagosTarjeta' && getAfter(eventPath(uid, data.eventoContableId)).data.eventoTipo == 'PAGO_TARJETA'
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.montoMinor == data.montoMinor
+              && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.get('tarjeta_id', null) == data.tarjeta_id
+              && getAfter(eventPath(uid, data.eventoContableId)).data.cuentaId == data.cuenta_id));
+    }
+
+    function auditedAnnulment(uid, collection, documentId, data) {
+      return data.anulada == true
+        && data.eventoAnulacionId is string
+        && !exists(eventPath(uid, data.eventoAnulacionId))
+        && existsAfter(eventPath(uid, data.eventoAnulacionId))
+        && getAfter(eventPath(uid, data.eventoAnulacionId)).data.operacionColeccion == collection
+        && getAfter(eventPath(uid, data.eventoAnulacionId)).data.operacionId == documentId
+        && getAfter(eventPath(uid, data.eventoAnulacionId)).data.eventoTipo == 'REVERSIÓN'
+        && getAfter(eventPath(uid, data.eventoAnulacionId)).data.eventoRelacionadoId == resource.data.get('eventoContableId', null);
+    }
+
+    function linkedThroughAccount(uid, eventId, eventData) {
+      let ref = /databases/$(database)/documents/users/$(uid)/cuentas/$(eventData.cuentaId);
+      return eventData.cuentaId is string && existsAfter(ref)
+        && getAfter(ref).data.ultimaOperacionContableId == eventData.operacionId
+        && getAfter(ref).data.ultimoEventoContableId is string
+        && !exists(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && existsAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && getAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId)).data.operacionId == eventData.operacionId;
+    }
+
+    function linkedThroughCard(uid, eventId, eventData) {
+      let cardId = eventData.operacionSnapshot.get('tarjeta_id', null);
+      let ref = /databases/$(database)/documents/users/$(uid)/tarjetas/$(cardId);
+      return cardId is string && existsAfter(ref)
+        && getAfter(ref).data.ultimaOperacionContableId == eventData.operacionId
+        && getAfter(ref).data.ultimoEventoContableId is string
+        && !exists(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && existsAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && getAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId)).data.operacionId == eventData.operacionId;
+    }
+
+    function linkedThroughDebt(uid, eventId, eventData) {
+      let ref = /databases/$(database)/documents/users/$(uid)/deudas/$(eventData.deudaId);
+      return eventData.deudaId is string && existsAfter(ref)
+        && getAfter(ref).data.ultimaOperacionContableId == eventData.operacionId
+        && getAfter(ref).data.ultimoEventoContableId is string
+        && !exists(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && existsAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId))
+        && getAfter(eventPath(uid, getAfter(ref).data.ultimoEventoContableId)).data.operacionId == eventData.operacionId;
+    }
+
+    function eventIsLinked(uid, eventId, eventData) {
+      return (eventData.cuentaId is string && linkedThroughAccount(uid, eventId, eventData))
+        || (eventData.operacionSnapshot.get('tarjeta_id', null) is string && linkedThroughCard(uid, eventId, eventData))
+        || (eventData.deudaId is string && linkedThroughDebt(uid, eventId, eventData))
+        || ((eventData.operacionColeccion == 'movimientos' || eventData.operacionColeccion == 'transferencias' || eventData.operacionColeccion == 'pagosTarjeta')
+          && existsAfter(/databases/$(database)/documents/users/$(uid)/$(eventData.operacionColeccion)/$(eventData.operacionId))
+          && (getAfter(/databases/$(database)/documents/users/$(uid)/$(eventData.operacionColeccion)/$(eventData.operacionId)).data.eventoContableId == eventId
+            || getAfter(/databases/$(database)/documents/users/$(uid)/$(eventData.operacionColeccion)/$(eventData.operacionId)).data.eventoAnulacionId == eventId));
+    }
+
+    function safeAccountingEvent(uid, eventId) {
       return request.resource.data.keys().hasOnly([
           'cuentaId', 'deudaId', 'operacionColeccion', 'operacionId', 'eventoTipo',
           'montoDeltaMinor', 'deltaPrincipalMinor', 'deltaResultadoMinor', 'deltaIngresoMinor', 'deltaGastoMinor', 'moneda',
@@ -85,7 +180,7 @@ service cloud.firestore {
         ])
         && (request.resource.data.cuentaId == null || (request.resource.data.cuentaId is string && existsAfter(/databases/$(database)/documents/users/$(uid)/cuentas/$(request.resource.data.cuentaId))))
         && (request.resource.data.deudaId == null || (request.resource.data.deudaId is string && existsAfter(/databases/$(database)/documents/users/$(uid)/deudas/$(request.resource.data.deudaId))))
-        && request.resource.data.operacionColeccion in ['cuentas', 'deudas', 'movimientos', 'transferencias', 'pagosTarjeta']
+        && request.resource.data.operacionColeccion in ['cuentas', 'tarjetas', 'deudas', 'movimientos', 'transferencias', 'pagosTarjeta']
         && request.resource.data.operacionId is string
         && request.resource.data.eventoTipo in ['SALDO_BASE', 'MOVIMIENTO', 'TRANSFERENCIA', 'PAGO_TARJETA', 'PRESTAMO', 'PAGO_PRINCIPAL', 'INTERES', 'COMISION', 'REVERSIÓN', 'AJUSTE']
         && request.resource.data.montoDeltaMinor is int
@@ -101,7 +196,8 @@ service cloud.firestore {
         && (request.resource.data.motivo == null || request.resource.data.motivo is string)
         && request.resource.data.operacionSnapshot is map
         && request.resource.data.registradoEn == request.time
-        && request.resource.data.creadoEn == request.time;
+        && request.resource.data.creadoEn == request.time
+        && eventIsLinked(uid, eventId, request.resource.data);
     }
 
     match /users/{uid} {
@@ -114,16 +210,27 @@ service cloud.firestore {
       match /{collection}/{documentId} {
         allow read: if signedInAs(uid) && allowedCollection(collection);
         allow create: if signedInAs(uid) && allowedCollection(collection) && collection != 'eventosContables' && safeMoneyFields() && safeCollectionFields(collection) && requiredCreateFields(collection) && (collection != 'deudas' || safeDebtFields())
+          && (collection != 'movimientos' && collection != 'transferencias' && collection != 'pagosTarjeta' || ledgerEventValid(uid, collection, documentId, request.resource.data))
+          && (collection != 'cuentas' || request.resource.data.saldoActualMinor == 0 || (validBalancePointer(uid, collection, documentId, request.resource.data) && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.eventoTipo == 'SALDO_BASE' && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.montoDeltaMinor == request.resource.data.saldoActualMinor))
+          && (collection != 'tarjetas' || request.resource.data.get('utilizadoMinor', 0) == 0 || (validBalancePointer(uid, collection, documentId, request.resource.data) && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.deltaPrincipalMinor == request.resource.data.utilizadoMinor))
+          && (collection != 'deudas' || (validBalancePointer(uid, collection, documentId, request.resource.data)
+            && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.eventoTipo == (request.resource.data.origen_saldo == 'PRESTAMO_NUEVO' ? 'PRESTAMO' : 'SALDO_BASE')
+            && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.operacionSnapshot.montoTotalMinor == request.resource.data.montoTotalMinor))
           && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool);
         allow update: if signedInAs(uid) && allowedCollection(collection) && collection != 'eventosContables' && safeMoneyFields() && safeCollectionFields(collection) && (collection != 'deudas' || safeDebtFields())
           && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool)
+          && (collection != 'cuentas' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['saldoActualMinor', 'saldoInicialMinor', 'ultimoEventoContableId', 'ultimaOperacionContableId']) || balanceChangeHasEvent(uid, collection, documentId))
+          && (collection != 'tarjetas' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['utilizadoMinor', 'saldoInicialUsadoMinor', 'ultimoEventoContableId', 'ultimaOperacionContableId']) || balanceChangeHasEvent(uid, collection, documentId))
+          && (collection != 'deudas' || (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['montoTotalMinor']) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['montoPagadoMinor', 'ultimoEventoContableId', 'ultimaOperacionContableId']) || (validBalancePointer(uid, collection, documentId, request.resource.data) && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.operacionSnapshot.principalMinor == (request.resource.data.get('montoPagadoMinor', 0) - resource.data.get('montoPagadoMinor', 0)))))
+          && (collection != 'deudas' || request.resource.data.get('archivada', false) != true || request.resource.data.montoPagadoMinor >= request.resource.data.montoTotalMinor)
+          && (collection != 'movimientos' && collection != 'transferencias' && collection != 'pagosTarjeta' || (ledgerEventValid(uid, collection, documentId, request.resource.data) || auditedAnnulment(uid, collection, documentId, request.resource.data)))
           && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if signedInAs(uid) && collection in ['personas', 'propietarios', 'instituciones', 'categorias', 'presupuestos', 'metas', 'recurrentes'];
       }
 
       match /eventosContables/{eventId} {
         allow read: if signedInAs(uid);
-        allow create: if signedInAs(uid) && safeAccountingEvent(uid);
+        allow create: if signedInAs(uid) && safeAccountingEvent(uid, eventId);
         allow update, delete: if false;
       }
     }
