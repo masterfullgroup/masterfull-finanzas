@@ -53,7 +53,7 @@ test("la cuenta efímera de Auth Emulator solo accede a sus documentos ficticios
     eventoTipo: "SALDO_BASE", montoDeltaMinor: 50_000, deltaPrincipalMinor: 0,
     deltaResultadoMinor: 0, deltaIngresoMinor: 0, deltaGastoMinor: 0, moneda: "PEN",
     fechaEfectiva: "2026-10-01", impactoResultado: "NINGUNO", componenteDeuda: null,
-    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { saldoConfirmado: true },
+    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { saldoConfirmado: true, saldoCambioAplicadoMinor: 50_000, utilizadoCambioAplicadoMinor: 0 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
   await baseline.commit();
@@ -80,7 +80,7 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
     eventoTipo: "MOVIMIENTO", montoDeltaMinor: 12_500, deltaPrincipalMinor: 0,
     deltaResultadoMinor: 12_500, deltaIngresoMinor: 12_500, deltaGastoMinor: 0, moneda: "PEN",
     fechaEfectiva: "2026-10-01", impactoResultado: "INGRESO", componenteDeuda: null,
-    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 12_500 },
+    eventoRelacionadoId: null, motivo: null, operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 12_500, saldoCambioAplicadoMinor: 12_500, utilizadoCambioAplicadoMinor: 0 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
   first.update(accountRef, { saldoActualMinor: 62_500, ultimoEventoContableId: originalEventRef.id, ultimaOperacionContableId: movementRef.id, updatedAt: serverTimestamp() });
@@ -96,7 +96,7 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
     deltaResultadoMinor: -12_500, deltaIngresoMinor: -12_500, deltaGastoMinor: 0, moneda: "PEN",
     fechaEfectiva: "2026-10-01", impactoResultado: "NINGUNO", componenteDeuda: null,
     eventoRelacionadoId: originalEventRef.id, motivo: "Corrección ficticia de prueba",
-    operacionSnapshot: { tipo: "INGRESO", montoMinor: 12_500 },
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 12_500, saldoCambioAplicadoMinor: -12_500, utilizadoCambioAplicadoMinor: 0 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
   correction.set(doc(aliceDb, `users/${aliceUid}/eventosContables/${replacementEventId}`), {
@@ -105,7 +105,7 @@ test("el cliente puede crear y corregir un movimiento con eventos append-only", 
     deltaResultadoMinor: 14_000, deltaIngresoMinor: 14_000, deltaGastoMinor: 0, moneda: "PEN",
     fechaEfectiva: "2026-10-01", impactoResultado: "INGRESO", componenteDeuda: null,
     eventoRelacionadoId: originalEventRef.id, motivo: null,
-    operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 14_000 },
+    operacionSnapshot: { tipo: "INGRESO", cuenta_id: "test-account", montoMinor: 14_000, saldoCambioAplicadoMinor: 1_500, utilizadoCambioAplicadoMinor: 0 },
     registradoEn: serverTimestamp(), creadoEn: serverTimestamp(),
   });
   await correction.commit();

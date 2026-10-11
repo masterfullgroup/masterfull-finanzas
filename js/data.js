@@ -35,7 +35,7 @@ function accountingPointer(eventId, operationId) {
   return { ultimoEventoContableId: eventId, ultimaOperacionContableId: operationId };
 }
 
-function cashMovementEvent({ operationCollection, operationId, operationType, accountId, currency, effectiveDate, cashDeltaMinor, principalDeltaMinor = 0, impact = "NINGUNO", resultDeltaMinor = null, resultBasisImpact = impact, component = null, relatedEventId = null, reason = null, snapshot = null }) {
+function cashMovementEvent({ operationCollection, operationId, operationType, accountId, currency, effectiveDate, cashDeltaMinor, principalDeltaMinor = 0, appliedCashDeltaMinor = cashDeltaMinor, appliedPrincipalDeltaMinor = principalDeltaMinor, impact = "NINGUNO", resultDeltaMinor = null, resultBasisImpact = impact, component = null, relatedEventId = null, reason = null, snapshot = null }) {
   const resultDelta = resultDeltaMinor == null ? (impact === "INGRESO" ? Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : impact === "GASTO" ? -Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : 0) : Number(resultDeltaMinor);
   return {
     cuentaId: accountId || null, deudaId: snapshot?.deuda_id || snapshot?.deudaId || null,
@@ -46,7 +46,7 @@ function cashMovementEvent({ operationCollection, operationId, operationType, ac
     deltaIngresoMinor: resultBasisImpact === "INGRESO" ? resultDelta : 0,
     deltaGastoMinor: resultBasisImpact === "GASTO" ? -resultDelta : 0,
     componenteDeuda: component, eventoRelacionadoId: relatedEventId, motivo: reason,
-    operacionSnapshot: snapshot,
+    operacionSnapshot: { ...snapshot, saldoCambioAplicadoMinor: Number(appliedCashDeltaMinor || 0), utilizadoCambioAplicadoMinor: Number(appliedPrincipalDeltaMinor || 0) },
   };
 }
 
@@ -263,7 +263,7 @@ export async function establishAccountBaseline(uid, accountId, confirmedBalance,
     const baselineEventRef = newAccountingEventRef(db, fs, uid);
     appendAccountingEvent(transaction, baselineEventRef, fs, cashMovementEvent({
       operationCollection: "cuentas", operationId: accountId, operationType: "SALDO_BASE", accountId,
-      currency: accountSnapshot.data().moneda || "PEN", effectiveDate, cashDeltaMinor: amountMinor, impact: "NINGUNO", snapshot: { saldoConfirmado: true },
+      currency: accountSnapshot.data().moneda || "PEN", effectiveDate, cashDeltaMinor: amountMinor, appliedCashDeltaMinor: 0, impact: "NINGUNO", snapshot: { saldoConfirmado: true },
     }));
     transaction.update(accountRef, accountingPointer(baselineEventRef.id, accountId));
   });
@@ -310,6 +310,7 @@ export async function saveDebtSettlement(uid, debtId, values) {
       appendAccountingEvent(transaction, eventRefs[item.index], fs, cashMovementEvent({
         operationCollection: "deudas", operationId, operationType: item.type, accountId: values.cuenta_id,
         currency, effectiveDate: values.fecha, cashDeltaMinor: item.cash, principalDeltaMinor: item.principal,
+        appliedCashDeltaMinor: cashDelta,
         impact: item.impact, resultDeltaMinor: item.impact === "INGRESO" ? item.amount : item.impact === "GASTO" ? -item.amount : 0,
         component: item.component, snapshot: { deudaId: debtId, principalMinor, interestMinor, feeMinor, cambioEfectivoTotalMinor: cashDelta, descripcion: values.descripcion || "" },
       }));
@@ -453,19 +454,20 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
       requireSnapshots(snapshots, "cuenta");
       if (snapshots.some((snapshot) => snapshot.data().moneda !== value.moneda)) throw new Error("Las cuentas y la transferencia deben usar la misma moneda.");
       const balanceChanges = new Map(ids.map((accountId, index) => [accountId, Number(snapshots[index].data()?.saldoActualMinor ?? snapshots[index].data()?.saldoInicialMinor ?? 0)]));
+      const initialBalances = new Map(balanceChanges);
       if (old) { balanceChanges.set(old.from, balanceChanges.get(old.from) + old.amount); balanceChanges.set(old.to, balanceChanges.get(old.to) - old.amount); }
       balanceChanges.set(value.cuenta_origen_id, balanceChanges.get(value.cuenta_origen_id) - amount);
       balanceChanges.set(value.cuenta_destino_id, balanceChanges.get(value.cuenta_destino_id) + amount);
       const effectiveDate = oldRow?.fecha || value.fecha;
       let eventIndex = 0;
       if (old) {
-        appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.from, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
-        appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.to, currency: value.moneda, effectiveDate, cashDeltaMinor: -old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
+        appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.from, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, appliedCashDeltaMinor: balanceChanges.get(old.from) - initialBalances.get(old.from), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
+        appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.to, currency: value.moneda, effectiveDate, cashDeltaMinor: -old.amount, appliedCashDeltaMinor: balanceChanges.get(old.to) - initialBalances.get(old.to), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
       }
       const sourceEventRef = eventRefs[eventIndex++];
       const destinationEventRef = eventRefs[eventIndex++];
-      appendAccountingEvent(transaction, sourceEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_origen_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
-      appendAccountingEvent(transaction, destinationEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_destino_id, currency: value.moneda, effectiveDate, cashDeltaMinor: amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      appendAccountingEvent(transaction, sourceEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_origen_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, appliedCashDeltaMinor: balanceChanges.get(value.cuenta_origen_id) - initialBalances.get(value.cuenta_origen_id), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      appendAccountingEvent(transaction, destinationEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "TRANSFERENCIA", accountId: value.cuenta_destino_id, currency: value.moneda, effectiveDate, cashDeltaMinor: amount, appliedCashDeltaMinor: balanceChanges.get(value.cuenta_destino_id) - initialBalances.get(value.cuenta_destino_id), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, legacyEventAnchor: Boolean(legacyAnchor) } }));
       transaction.set(docRef, { ...data, ...(legacyAnchor ? { legacyEventAnchor: true, legacyEventAnchorSnapshot: legacyAnchor } : {}), fecha: effectiveDate, montoMinor: amount, eventoContableId: eventRefs[eventIndex - 1].id, createdAt: previousRaw.createdAt || fs.serverTimestamp() });
       for (const accountId of ids) {
         const eventRef = accountId === value.cuenta_origen_id ? sourceEventRef : accountId === value.cuenta_destino_id ? destinationEventRef : eventRefs[old?.from === accountId ? 0 : 1];
@@ -491,15 +493,17 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
       if ([...snapshots].some((snapshot) => snapshot.data().moneda !== value.moneda)) throw new Error("La tarjeta, la cuenta y el pago deben usar la misma moneda.");
       const accountChanges = new Map(accountIds.map((accountId, index) => [accountId, Number(snapshots[index].data()?.saldoActualMinor ?? snapshots[index].data()?.saldoInicialMinor ?? 0)]));
       const cardChanges = new Map(cardIds.map((cardId, index) => [cardId, Number(snapshots[accountRefs.length + index].data()?.utilizadoMinor ?? snapshots[accountRefs.length + index].data()?.saldoInicialUsadoMinor ?? 0)]));
+      const initialAccountBalances = new Map(accountChanges);
+      const initialCardBalances = new Map(cardChanges);
       if (old) { accountChanges.set(old.account, accountChanges.get(old.account) + old.amount); cardChanges.set(old.card, cardChanges.get(old.card) + old.amount); }
       if (snapshots[accountRefs.length + cardIds.indexOf(value.tarjeta_id)].data().tipo !== "CREDITO") throw new Error("Solo se pueden registrar pagos para tarjetas de crédito.");
       validatePaymentAmount(amount, cardChanges.get(value.tarjeta_id));
       accountChanges.set(value.cuenta_id, accountChanges.get(value.cuenta_id) - amount);
       cardChanges.set(value.tarjeta_id, cardChanges.get(value.tarjeta_id) - amount);
       const effectiveDate = oldRow?.fecha || value.fecha;
-      if (old) appendAccountingEvent(transaction, eventRefs[0], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.account, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, principalDeltaMinor: old.amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: oldRow }));
+      if (old) appendAccountingEvent(transaction, eventRefs[0], fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.account, currency: value.moneda, effectiveDate, cashDeltaMinor: old.amount, appliedCashDeltaMinor: accountChanges.get(old.account) - initialAccountBalances.get(old.account), principalDeltaMinor: old.amount, appliedPrincipalDeltaMinor: cardChanges.get(old.card) - initialCardBalances.get(old.card), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, reason: "Corrección vinculada a la operación original", snapshot: { ...oldRow, tarjeta_id: old.card } }));
       const paymentEventRef = eventRefs[old ? 1 : 0];
-      appendAccountingEvent(transaction, paymentEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "PAGO_TARJETA", accountId: value.cuenta_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, principalDeltaMinor: -amount, impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, tarjeta_id: value.tarjeta_id, legacyEventAnchor: Boolean(legacyAnchor) } }));
+      appendAccountingEvent(transaction, paymentEventRef, fs, cashMovementEvent({ operationCollection: collectionName, operationId: docRef.id, operationType: "PAGO_TARJETA", accountId: value.cuenta_id, currency: value.moneda, effectiveDate, cashDeltaMinor: -amount, appliedCashDeltaMinor: accountChanges.get(value.cuenta_id) - initialAccountBalances.get(value.cuenta_id), principalDeltaMinor: -amount, appliedPrincipalDeltaMinor: cardChanges.get(value.tarjeta_id) - initialCardBalances.get(value.tarjeta_id), impact: "NINGUNO", relatedEventId: operationSnapshot.data()?.eventoContableId || null, snapshot: { ...data, montoMinor: amount, tarjeta_id: value.tarjeta_id, legacyEventAnchor: Boolean(legacyAnchor) } }));
       transaction.set(docRef, { ...data, ...(legacyAnchor ? { legacyEventAnchor: true, legacyEventAnchorSnapshot: legacyAnchor } : {}), fecha: effectiveDate, montoMinor: amount, eventoContableId: eventRefs[old ? 1 : 0].id, createdAt: previousRaw.createdAt || fs.serverTimestamp() });
       accountIds.forEach((accountId, index) => transaction.update(accountRefs[index], { saldoActualMinor: accountChanges.get(accountId), ...accountingPointer(accountId === value.cuenta_id ? paymentEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
       cardIds.forEach((cardId, index) => transaction.update(cardRefs[index], { utilizadoMinor: cardChanges.get(cardId), ...accountingPointer(cardId === value.tarjeta_id ? paymentEventRef.id : eventRefs[0].id, docRef.id), updatedAt: fs.serverTimestamp() }));
@@ -563,6 +567,8 @@ export async function saveMovement(uid, value, id = value.id || null) {
     if (current.accountId && !accountById.get(current.accountId)) throw new Error("La cuenta vinculada no existe.");
     const accountChanges = new Map(accountIds.map((accountId) => [accountId, Number(accountById.get(accountId)?.saldoActualMinor ?? accountById.get(accountId)?.saldoInicialMinor ?? 0)]));
     const cardChanges = new Map(cardIds.map((cardId) => [cardId, Number(cardById.get(cardId)?.utilizadoMinor ?? cardById.get(cardId)?.saldoInicialUsadoMinor ?? 0)]));
+    const initialAccountBalances = new Map(accountChanges);
+    const initialCardBalances = new Map(cardChanges);
     if (old?.accountId) accountChanges.set(old.accountId, accountChanges.get(old.accountId) - old.delta);
     if (old?.cardId && old.cardDelta) cardChanges.set(old.cardId, cardChanges.get(old.cardId) - old.cardDelta);
     if (current.accountId) accountChanges.set(current.accountId, accountChanges.get(current.accountId) + current.delta);
@@ -572,6 +578,8 @@ export async function saveMovement(uid, value, id = value.id || null) {
     if (old) appendAccountingEvent(transaction, eventRefs[eventIndex++], fs, cashMovementEvent({
       operationCollection: "movimientos", operationId: docRef.id, operationType: "REVERSIÓN", accountId: old.accountId,
       currency: oldRow.moneda, effectiveDate, cashDeltaMinor: -old.delta, principalDeltaMinor: -old.cardDelta,
+      appliedCashDeltaMinor: old.accountId ? accountChanges.get(old.accountId) - initialAccountBalances.get(old.accountId) : 0,
+      appliedPrincipalDeltaMinor: old.cardId ? cardChanges.get(old.cardId) - initialCardBalances.get(old.cardId) : 0,
       impact: "NINGUNO", resultBasisImpact: oldRow.impacto_resultado || oldRow.tipo, resultDeltaMinor: (oldRow.impacto_resultado || oldRow.tipo) === "INGRESO" ? -Number(operationSnapshot.data().montoMinor || 0) : (oldRow.impacto_resultado || oldRow.tipo) === "GASTO" ? Number(operationSnapshot.data().montoMinor || 0) : 0,
       relatedEventId: operationSnapshot.data()?.eventoContableId || null,
       reason: "Corrección vinculada a la operación original", snapshot: { ...oldRow, cuenta_id: old.accountId },
@@ -580,6 +588,8 @@ export async function saveMovement(uid, value, id = value.id || null) {
     appendAccountingEvent(transaction, movementEventRef, fs, cashMovementEvent({
       operationCollection: "movimientos", operationId: docRef.id, operationType: "MOVIMIENTO", accountId: current.accountId,
       currency: value.moneda, effectiveDate, cashDeltaMinor: current.delta, principalDeltaMinor: current.cardDelta,
+      appliedCashDeltaMinor: current.accountId ? accountChanges.get(current.accountId) - initialAccountBalances.get(current.accountId) : 0,
+      appliedPrincipalDeltaMinor: current.cardId ? cardChanges.get(current.cardId) - initialCardBalances.get(current.cardId) : 0,
       impact: value.impacto_resultado || value.tipo, relatedEventId: operationSnapshot.data()?.eventoContableId || null,
       snapshot: { ...data, cuenta_id: current.accountId, montoMinor: amount, fecha: effectiveDate, legacyEventAnchor: Boolean(legacyAnchor) },
     }));

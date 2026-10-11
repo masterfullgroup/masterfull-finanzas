@@ -31,7 +31,7 @@ function movement(overrides = {}) {
 }
 
 function event(overrides = {}) {
-  return {
+  const value = {
     cuentaId: null,
     deudaId: null,
     operacionColeccion: "movimientos",
@@ -53,6 +53,12 @@ function event(overrides = {}) {
     creadoEn: serverTimestamp(),
     ...overrides,
   };
+  value.operacionSnapshot = {
+    ...value.operacionSnapshot,
+    saldoCambioAplicadoMinor: value.operacionSnapshot?.saldoCambioAplicadoMinor ?? value.montoDeltaMinor,
+    utilizadoCambioAplicadoMinor: value.operacionSnapshot?.utilizadoCambioAplicadoMinor ?? value.deltaPrincipalMinor,
+  };
+  return value;
 }
 
 async function createBaselineAccount(db, id, amount = 0) {
@@ -188,6 +194,70 @@ test("rechaza saldos y operaciones con eventos ausentes, preexistentes o de otro
   await assertFails(updateDoc(account, {
     saldoActualMinor: 1, ultimoEventoContableId: "cash-1-baseline", ultimaOperacionContableId: "cash-1",
   }));
+});
+
+test("rechaza deltas de saldo incorrectos, referencias inconsistentes y cambios de moneda", async () => {
+  const db = environment.authenticatedContext("alice").firestore();
+  const account = await createBaselineAccount(db, "cash-delta", 1_000);
+  const mismatch = writeBatch(db);
+  mismatch.update(account, { saldoActualMinor: 1_500, ultimoEventoContableId: "wrong-delta", ultimaOperacionContableId: "op-wrong" });
+  mismatch.set(doc(db, "users/alice/eventosContables/wrong-delta"), event({
+    cuentaId: "cash-delta", operacionColeccion: "movimientos", operacionId: "op-wrong", montoDeltaMinor: 499,
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 500, saldoCambioAplicadoMinor: 500, utilizadoCambioAplicadoMinor: 0 },
+  }));
+  mismatch.set(doc(db, "users/alice/movimientos/op-wrong"), { ...movement({ cuenta_id: "cash-delta", montoMinor: 500 }), eventoContableId: "wrong-delta" });
+  await assertFails(mismatch.commit());
+
+  const badAppliedDelta = writeBatch(db);
+  badAppliedDelta.update(account, { saldoActualMinor: 1_500, ultimoEventoContableId: "wrong-applied-delta", ultimaOperacionContableId: "op-bad-applied" });
+  badAppliedDelta.set(doc(db, "users/alice/eventosContables/wrong-applied-delta"), event({
+    cuentaId: "cash-delta", operacionColeccion: "movimientos", operacionId: "op-bad-applied", montoDeltaMinor: 500,
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 500, saldoCambioAplicadoMinor: 499, utilizadoCambioAplicadoMinor: 0 },
+  }));
+  badAppliedDelta.set(doc(db, "users/alice/movimientos/op-bad-applied"), { ...movement({ cuenta_id: "cash-delta", montoMinor: 500 }), eventoContableId: "wrong-applied-delta" });
+  await assertFails(badAppliedDelta.commit());
+
+  const foreignRef = writeBatch(db);
+  foreignRef.update(account, { saldoActualMinor: 1_500, ultimoEventoContableId: "ref-event", ultimaOperacionContableId: "other-op" });
+  foreignRef.set(doc(db, "users/alice/eventosContables/ref-event"), event({
+    cuentaId: "cash-delta", operacionColeccion: "movimientos", operacionId: "ref-event", montoDeltaMinor: 500,
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 500, saldoCambioAplicadoMinor: 500, utilizadoCambioAplicadoMinor: 0 },
+  }));
+  foreignRef.set(doc(db, "users/alice/movimientos/ref-event"), { ...movement({ cuenta_id: "cash-delta", montoMinor: 500 }), eventoContableId: "ref-event" });
+  await assertFails(foreignRef.commit());
+
+  await assertFails(updateDoc(account, { moneda: "USD" }));
+  const incompatibleCurrency = writeBatch(db);
+  incompatibleCurrency.set(doc(db, "users/alice/movimientos/currency-mismatch"), { ...movement({ cuenta_id: "cash-delta", moneda: "USD", montoMinor: 500 }), eventoContableId: "currency-mismatch-event" });
+  incompatibleCurrency.set(doc(db, "users/alice/eventosContables/currency-mismatch-event"), event({
+    cuentaId: "cash-delta", operacionId: "currency-mismatch", moneda: "USD", montoDeltaMinor: 500,
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 500, moneda: "USD" },
+  }));
+  await assertFails(incompatibleCurrency.commit());
+  const card = doc(db, "users/alice/tarjetas/currency-card");
+  await assertSucceeds(setDoc(card, { nombre: "Tarjeta", tipo: "CREDITO", moneda: "PEN", utilizadoMinor: 0, saldoInicialUsadoMinor: 0, createdAt: serverTimestamp() }));
+  await assertFails(updateDoc(card, { moneda: "USD" }));
+  const cardDelta = doc(db, "users/alice/tarjetas/card-delta");
+  await assertSucceeds(setDoc(cardDelta, { nombre: "Tarjeta", tipo: "CREDITO", moneda: "PEN", utilizadoMinor: 0, saldoInicialUsadoMinor: 0, createdAt: serverTimestamp() }));
+  const badCardDelta = writeBatch(db);
+  badCardDelta.update(cardDelta, { utilizadoMinor: 100, ultimoEventoContableId: "bad-card-delta", ultimaOperacionContableId: "card-delta" });
+  badCardDelta.set(doc(db, "users/alice/eventosContables/bad-card-delta"), event({
+    cuentaId: null, operacionColeccion: "tarjetas", operacionId: "card-delta", eventoTipo: "AJUSTE",
+    montoDeltaMinor: 0, deltaPrincipalMinor: 100,
+    operacionSnapshot: { tarjeta_id: "card-delta", saldoConfirmado: true, saldoCambioAplicadoMinor: 0, utilizadoCambioAplicadoMinor: 99 },
+  }));
+  await assertFails(badCardDelta.commit());
+  const debt = await createDebtBaseline(db, "currency-debt");
+  await assertFails(updateDoc(debt, { moneda: "USD" }));
+  const operation = doc(db, "users/alice/movimientos/currency-op");
+  await writeMovement(db, "currency-op", { cuenta_id: null });
+  const currencyChange = writeBatch(db);
+  currencyChange.update(operation, { moneda: "USD", eventoContableId: "currency-event-usd" });
+  currencyChange.set(doc(db, "users/alice/eventosContables/currency-event-usd"), event({
+    cuentaId: null, operacionId: "currency-op", montoDeltaMinor: 12_500, moneda: "USD",
+    operacionSnapshot: { tipo: "INGRESO", montoMinor: 12_500, moneda: "USD" },
+  }));
+  await assertFails(currencyChange.commit());
 });
 
 test("rechaza eventos mal formados y referencias de cuenta inexistentes", async () => {

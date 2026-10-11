@@ -87,10 +87,28 @@ service cloud.firestore {
 
     function balanceChangeHasEvent(uid, collection, documentId) {
       let afterData = request.resource.data;
+      let eventData = getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data;
+      let snapshot = eventData.operacionSnapshot;
       return validBalancePointer(uid, collection, documentId, afterData)
-        && (collection != 'cuentas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.cuentaId == documentId)
-        && (collection != 'tarjetas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.operacionSnapshot.get('tarjeta_id', null) == documentId)
-        && (collection != 'deudas' || getAfter(eventPath(uid, afterData.ultimoEventoContableId)).data.operacionSnapshot.get('deudaId', null) == documentId);
+        && (collection != 'cuentas' || (eventData.cuentaId == documentId
+          && snapshot.get('saldoCambioAplicadoMinor', null) is int
+          && snapshot.saldoCambioAplicadoMinor == afterData.get('saldoActualMinor', 0) - resource.data.get('saldoActualMinor', 0)
+          && ((eventData.eventoTipo == 'SALDO_BASE' && snapshot.saldoCambioAplicadoMinor == 0)
+            || (snapshot.get('cambioEfectivoTotalMinor', null) is int && snapshot.saldoCambioAplicadoMinor == snapshot.cambioEfectivoTotalMinor)
+            || eventData.eventoRelacionadoId is string
+            || snapshot.saldoCambioAplicadoMinor == eventData.montoDeltaMinor)))
+        && (collection != 'tarjetas' || (snapshot.get('tarjeta_id', null) == documentId
+          && snapshot.get('utilizadoCambioAplicadoMinor', null) is int
+          && snapshot.utilizadoCambioAplicadoMinor == afterData.get('utilizadoMinor', 0) - resource.data.get('utilizadoMinor', 0)
+          && ((eventData.eventoTipo == 'SALDO_BASE' && snapshot.utilizadoCambioAplicadoMinor == 0)
+            || eventData.eventoRelacionadoId is string || snapshot.utilizadoCambioAplicadoMinor == eventData.deltaPrincipalMinor)))
+        && (collection != 'deudas' || eventData.deudaId == documentId);
+    }
+
+    function currencyUnchanged() {
+      return ('moneda' in resource.data)
+        ? request.resource.data.get('moneda', null) == resource.data.moneda
+        : !('moneda' in request.resource.data);
     }
 
     function ledgerEventValid(uid, collection, documentId, data) {
@@ -99,6 +117,7 @@ service cloud.firestore {
         && existsAfter(eventPath(uid, data.eventoContableId))
         && getAfter(eventPath(uid, data.eventoContableId)).data.operacionColeccion == collection
         && getAfter(eventPath(uid, data.eventoContableId)).data.operacionId == documentId
+        && getAfter(eventPath(uid, data.eventoContableId)).data.moneda == data.moneda
         && ((collection == 'movimientos' && getAfter(eventPath(uid, data.eventoContableId)).data.eventoTipo == 'MOVIMIENTO'
               && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.montoMinor == data.montoMinor
               && getAfter(eventPath(uid, data.eventoContableId)).data.operacionSnapshot.tipo == data.tipo
@@ -195,8 +214,14 @@ service cloud.firestore {
         && (request.resource.data.eventoRelacionadoId == null || request.resource.data.eventoRelacionadoId is string)
         && (request.resource.data.motivo == null || request.resource.data.motivo is string)
         && request.resource.data.operacionSnapshot is map
+        && (request.resource.data.eventoRelacionadoId == null || (exists(eventPath(uid, request.resource.data.eventoRelacionadoId))
+          && get(eventPath(uid, request.resource.data.eventoRelacionadoId)).data.operacionColeccion == request.resource.data.operacionColeccion
+          && get(eventPath(uid, request.resource.data.eventoRelacionadoId)).data.operacionId == request.resource.data.operacionId))
         && request.resource.data.registradoEn == request.time
         && request.resource.data.creadoEn == request.time
+        && (request.resource.data.cuentaId == null || getAfter(/databases/$(database)/documents/users/$(uid)/cuentas/$(request.resource.data.cuentaId)).data.moneda == request.resource.data.moneda)
+        && (request.resource.data.deudaId == null || getAfter(/databases/$(database)/documents/users/$(uid)/deudas/$(request.resource.data.deudaId)).data.moneda == request.resource.data.moneda)
+        && (request.resource.data.operacionSnapshot.get('tarjeta_id', null) == null || getAfter(/databases/$(database)/documents/users/$(uid)/tarjetas/$(request.resource.data.operacionSnapshot.tarjeta_id)).data.moneda == request.resource.data.moneda)
         && eventIsLinked(uid, eventId, request.resource.data);
     }
 
@@ -218,6 +243,7 @@ service cloud.firestore {
             && getAfter(eventPath(uid, request.resource.data.ultimoEventoContableId)).data.operacionSnapshot.montoTotalMinor == request.resource.data.montoTotalMinor))
           && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool);
         allow update: if signedInAs(uid) && allowedCollection(collection) && collection != 'eventosContables' && safeMoneyFields() && safeCollectionFields(collection) && (collection != 'deudas' || safeDebtFields())
+          && (!(collection in ['cuentas', 'tarjetas', 'deudas', 'movimientos', 'transferencias', 'pagosTarjeta']) || currencyUnchanged())
           && (collection != 'tarjetas' || !('archivada' in request.resource.data) || request.resource.data.archivada is bool)
           && (collection != 'cuentas' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['saldoActualMinor', 'saldoInicialMinor', 'ultimoEventoContableId', 'ultimaOperacionContableId']) || balanceChangeHasEvent(uid, collection, documentId))
           && (collection != 'tarjetas' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['utilizadoMinor', 'saldoInicialUsadoMinor', 'ultimoEventoContableId', 'ultimaOperacionContableId']) || balanceChangeHasEvent(uid, collection, documentId))
