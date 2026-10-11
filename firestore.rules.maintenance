@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function allowedCollection(name) {
+      return name in [
+        'cuentas', 'tarjetas', 'personas', 'propietarios', 'instituciones',
+        'categorias', 'movimientos', 'presupuestos', 'metas', 'deudas',
+        'recurrentes', 'transferencias', 'pagosTarjeta', 'eventosContables'
+      ];
+    }
+
+    match /users/{uid} {
+      allow read: if signedInAs(uid);
+      allow write: if false;
+
+      match /{collection}/{documentId} {
+        allow read: if signedInAs(uid) && allowedCollection(collection);
+        allow write: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -51,6 +51,9 @@ jobs:
       - name: Pruebas financieras
         run: npm run test:finance
 
+      - name: Contrato del cliente contable
+        run: npm run test:client-contract
+
       - name: Pruebas de navegación
         run: npm run test:navigation
 
@@ -59,3 +62,6 @@ jobs:
 
       - name: Pruebas de reglas con Firestore Emulator
         run: npm run test:rules
+
+      - name: Prueba de cliente con cuenta Auth ficticia y Firestore Emulator
+        run: npm run test:auth-emulator
