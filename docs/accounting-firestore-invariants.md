@@ -14,7 +14,7 @@ This is the client-side accounting model for the static Firebase application. Ne
 
 ## Transaction requirements
 
-The client transaction computes the new balance from the transaction's reads, applies the matching account/card/debt updates, writes every event in the operation group, and writes the pointers before commit. Firestore transactions retry on conflicting concurrent writes. Corrections keep the original effective date, append a reversal and replacement event, and do not overwrite prior events. An annulment appends a reversal and marks the operation as annulled.
+The client transaction computes the new balance from the transaction's reads, applies the matching account/card/debt updates, writes every event in the operation group, and writes the pointers before commit. The shared transaction wrapper also retries up to two times after a `permission-denied`, so a stale balance rejected by the rules can be re-read and recalculated; persistent or unrelated denials still fail. Corrections keep the original effective date, append a reversal and replacement event, and do not overwrite prior events. An annulment appends a reversal and marks the operation as annulled.
 
 ## What Security Rules cannot prove
 

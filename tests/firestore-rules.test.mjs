@@ -444,21 +444,30 @@ test("préstamo recibido crea deuda y aumenta efectivo con un evento compartido"
 test("dos transacciones simultáneas conservan ambos movimientos y el saldo acumulado", async () => {
   const db = environment.authenticatedContext("alice").firestore();
   const account = await createBaselineAccount(db, "cash-1", 0);
-  const commitIncome = (id) => runTransaction(db, async (transaction) => {
-    const current = await transaction.get(account);
-    const eventId = `${id}-event`;
-    const eventRef = doc(db, `users/alice/eventosContables/${eventId}`);
-    transaction.update(account, { saldoActualMinor: current.data().saldoActualMinor + 1_000, ultimoEventoContableId: eventId, ultimaOperacionContableId: id });
-    transaction.set(doc(db, `users/alice/movimientos/${id}`), {
-      tipo: "INGRESO", medio_pago: "EFECTIVO", cuenta_id: "cash-1", montoMinor: 1_000,
-      moneda: "PEN", fecha: "2026-01-12", eventoContableId: eventId, createdAt: serverTimestamp(),
-    });
-    transaction.set(eventRef, event({
-      cuentaId: "cash-1", operacionColeccion: "movimientos", operacionId: id,
-      eventoTipo: "MOVIMIENTO", montoDeltaMinor: 1_000, deltaResultadoMinor: 1_000,
-      deltaIngresoMinor: 1_000, deltaGastoMinor: 0, operacionSnapshot: { tipo: "INGRESO", cuenta_id: "cash-1", montoMinor: 1_000 },
-    }));
-  });
+  const commitIncome = async (id) => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await runTransaction(db, async (transaction) => {
+          const current = await transaction.get(account);
+          const eventId = `${id}-event`;
+          const eventRef = doc(db, `users/alice/eventosContables/${eventId}`);
+          transaction.update(account, { saldoActualMinor: current.data().saldoActualMinor + 1_000, ultimoEventoContableId: eventId, ultimaOperacionContableId: id });
+          transaction.set(doc(db, `users/alice/movimientos/${id}`), {
+            tipo: "INGRESO", medio_pago: "EFECTIVO", cuenta_id: "cash-1", montoMinor: 1_000,
+            moneda: "PEN", fecha: "2026-01-12", eventoContableId: eventId, createdAt: serverTimestamp(),
+          });
+          transaction.set(eventRef, event({
+            cuentaId: "cash-1", operacionColeccion: "movimientos", operacionId: id,
+            eventoTipo: "MOVIMIENTO", montoDeltaMinor: 1_000, deltaResultadoMinor: 1_000,
+            deltaIngresoMinor: 1_000, deltaGastoMinor: 0, operacionSnapshot: { tipo: "INGRESO", cuenta_id: "cash-1", montoMinor: 1_000 },
+          }));
+        });
+        return;
+      } catch (error) {
+        if (error?.code !== "permission-denied" || attempt >= 2) throw error;
+      }
+    }
+  };
   await Promise.all([commitIncome("concurrent-a"), commitIncome("concurrent-b")]);
   assert.equal((await getDoc(account)).data().saldoActualMinor, 2_000);
   assert.equal((await getDoc(doc(db, "users/alice/movimientos/concurrent-a"))).exists(), true);

@@ -35,6 +35,19 @@ function accountingPointer(eventId, operationId) {
   return { ultimoEventoContableId: eventId, ultimaOperacionContableId: operationId };
 }
 
+async function runAccountingTransaction(db, fs, updateFunction) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fs.runTransaction(db, updateFunction);
+    } catch (error) {
+      // Rules can reject a stale balance snapshot during concurrent writes before
+      // the SDK reports a transaction conflict. A retry re-reads all affected
+      // documents; rules still validate the complete atomic write each time.
+      if (error?.code !== "permission-denied" || attempt >= 2) throw error;
+    }
+  }
+}
+
 function cashMovementEvent({ operationCollection, operationId, operationType, accountId, currency, effectiveDate, cashDeltaMinor, principalDeltaMinor = 0, appliedCashDeltaMinor = cashDeltaMinor, appliedPrincipalDeltaMinor = principalDeltaMinor, impact = "NINGUNO", resultDeltaMinor = null, resultBasisImpact = impact, component = null, relatedEventId = null, reason = null, snapshot = null }) {
   const resultDelta = resultDeltaMinor == null ? (impact === "INGRESO" ? Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : impact === "GASTO" ? -Math.abs(Number(snapshot?.montoMinor || cashDeltaMinor)) : 0) : Number(resultDeltaMinor);
   return {
@@ -120,7 +133,7 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
   if (id && name === "cuentas" && data.saldoInicialMinor !== undefined) {
     const baselineRef = newAccountingEventRef(db, fs, uid);
     const baselineQuery = fs.query(accountingEventsRef(db, fs, uid), fs.where("cuentaId", "==", id), fs.where("eventoTipo", "==", "SALDO_BASE"), fs.limit(1));
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const [snapshot, baselineSnapshot] = await Promise.all([transaction.get(docRef), transaction.get(baselineQuery)]);
       if (!snapshot.exists()) throw new Error("La cuenta ya no existe. Actualiza la pantalla.");
       const previous = snapshot.data();
@@ -142,7 +155,7 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
     });
   } else if (id && name === "tarjetas" && data.saldoInicialUsadoMinor !== undefined) {
     const eventRef = newAccountingEventRef(db, fs, uid);
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const snapshot = await transaction.get(docRef);
       if (!snapshot.exists()) throw new Error("La tarjeta ya no existe. Actualiza la pantalla.");
       const previous = snapshot.data();
@@ -158,7 +171,7 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
     const baselineRef = newAccountingEventRef(db, fs, uid);
     const balanceMinor = Number(data.saldoInicialMinor || 0);
     if (!Number.isSafeInteger(balanceMinor) || balanceMinor < 0) throw new Error("Confirma un saldo inicial válido para la línea base.");
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       transaction.set(docRef, { ...data, saldoActualMinor: balanceMinor, createdAt: fs.serverTimestamp() });
       appendAccountingEvent(transaction, baselineRef, fs, cashMovementEvent({
         operationCollection: "cuentas", operationId: docRef.id, operationType: "SALDO_BASE", accountId: docRef.id,
@@ -169,7 +182,7 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
     });
   } else if (name === "tarjetas" && Number(data.saldoInicialUsadoMinor || 0) > 0) {
     const baselineRef = newAccountingEventRef(db, fs, uid);
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       transaction.set(docRef, { ...data, utilizadoMinor: Number(data.saldoInicialUsadoMinor), createdAt: fs.serverTimestamp() });
       appendAccountingEvent(transaction, baselineRef, fs, cashMovementEvent({ operationCollection: "tarjetas", operationId: docRef.id, operationType: "SALDO_BASE", accountId: null, currency: value.moneda || "PEN", effectiveDate: value.fecha_saldo_inicial || new Date().toISOString().slice(0, 10), cashDeltaMinor: 0, principalDeltaMinor: Number(data.saldoInicialUsadoMinor), impact: "NINGUNO", snapshot: { tarjeta_id: docRef.id, saldoConfirmado: true } }));
       transaction.update(docRef, accountingPointer(baselineRef.id, docRef.id));
@@ -192,7 +205,7 @@ export async function saveDebt(uid, value, id = null) {
     if (!data.cuenta_id) throw new Error("Selecciona la cuenta que recibió o entregó el préstamo.");
     const accountRef = fs.doc(db, ...collectionPath(uid, "cuentas"), data.cuenta_id);
     const eventRef = newAccountingEventRef(db, fs, uid);
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const [accountSnapshot, existing] = await Promise.all([transaction.get(accountRef), transaction.get(debtRef)]);
       if (!accountSnapshot.exists()) throw new Error("La cuenta vinculada al préstamo ya no existe.");
       if (existing.exists()) throw new Error("La deuda ya existe. Actualiza la pantalla.");
@@ -213,7 +226,7 @@ export async function saveDebt(uid, value, id = null) {
       transaction.update(accountRef, { saldoActualMinor: balance, ...accountingPointer(eventRef.id, debtRef.id), updatedAt: fs.serverTimestamp() });
     });
   } else if (id) {
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const currentSnapshot = await transaction.get(debtRef);
       if (!currentSnapshot.exists()) throw new Error("La deuda ya no existe. Actualiza la pantalla.");
       const previous = currentSnapshot.data();
@@ -229,7 +242,7 @@ export async function saveDebt(uid, value, id = null) {
     const effectiveDate = value.fecha_operacion;
     if (!effectiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) throw new Error("Indica la fecha efectiva del saldo confirmado.");
     const eventRef = newAccountingEventRef(db, fs, uid);
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const paidMinor = Number(data.montoPagadoMinor || 0);
       transaction.set(debtRef, {
         ...data, montoPagadoMinor: paidMinor, estado: value.estado || "PENDIENTE",
@@ -254,7 +267,7 @@ export async function establishAccountBaseline(uid, accountId, confirmedBalance,
   if (!effectiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) throw new Error("Indica una fecha de corte confirmada.");
   const query = fs.query(eventsRef, fs.where("cuentaId", "==", accountId), fs.where("eventoTipo", "==", "SALDO_BASE"), fs.limit(1));
   let created = true;
-  await fs.runTransaction(db, async (transaction) => {
+  await runAccountingTransaction(db, fs, async (transaction) => {
     const [accountSnapshot, existing] = await Promise.all([transaction.get(accountRef), transaction.get(query)]);
     if (!accountSnapshot.exists()) throw new Error("La cuenta no existe.");
     if (!existing.empty) { created = false; return; }
@@ -283,7 +296,7 @@ export async function saveDebtSettlement(uid, debtId, values) {
   if (![principalMinor, interestMinor, feeMinor].some((amount) => amount > 0)) throw new Error("Indica principal, interés o comisión mayor que cero.");
   if (principalMinor < 0 || interestMinor < 0 || feeMinor < 0) throw new Error("Los importes no pueden ser negativos.");
   if (!values.fecha || !/^\d{4}-\d{2}-\d{2}$/.test(values.fecha)) throw new Error("Indica la fecha efectiva de la operación.");
-  await fs.runTransaction(db, async (transaction) => {
+  await runAccountingTransaction(db, fs, async (transaction) => {
     const [debtSnapshot, accountSnapshot] = await Promise.all([transaction.get(debtRef), transaction.get(accountRef)]);
     requireSnapshots([debtSnapshot, accountSnapshot], "deuda o cuenta");
     const debt = debtSnapshot.data();
@@ -332,7 +345,7 @@ export async function removeDocument(uid, name, id) {
     categorias: [["movimientos", "categoria_id"], ["presupuestos", "categoria_id"], ["recurrentes", "categoria_id"]],
     deudas: [["eventosContables", "deudaId"], ["movimientos", "deuda_id"]],
   }[name] || [];
-  await fs.runTransaction(db, async (transaction) => {
+  await runAccountingTransaction(db, fs, async (transaction) => {
     const targetSnapshot = await transaction.get(targetRef);
     if (!targetSnapshot.exists()) throw new Error("El registro ya no existe. Actualiza la pantalla.");
     const queries = await Promise.all(references.map(async ([collection, field]) => {
@@ -441,7 +454,7 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
     }
     const amount = toMinorUnits(value.monto, value.moneda || "PEN");
     if (amount <= 0) throw new Error("El importe debe ser mayor que cero.");
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const operationSnapshot = await transaction.get(docRef);
       if (operationSnapshot.data()?.anulada) throw new Error("La operación está anulada y no se puede modificar.");
       const oldRow = operationSnapshot.exists() ? decode(collectionName, operationSnapshot.id, operationSnapshot.data()) : null;
@@ -477,7 +490,7 @@ export async function saveLedgerEntry(uid, collectionName, value, id = value.id 
   } else if (collectionName === "pagosTarjeta") {
     const amount = toMinorUnits(value.monto, value.moneda || "PEN");
     if (!value.cuenta_id || !value.tarjeta_id) throw new Error("Selecciona la cuenta de pago y la tarjeta.");
-    await fs.runTransaction(db, async (transaction) => {
+    await runAccountingTransaction(db, fs, async (transaction) => {
       const operationSnapshot = await transaction.get(docRef);
       if (operationSnapshot.data()?.anulada) throw new Error("La operación está anulada y no se puede modificar.");
       const oldRow = operationSnapshot.exists() ? decode(collectionName, operationSnapshot.id, operationSnapshot.data()) : null;
@@ -522,7 +535,7 @@ export async function saveMovement(uid, value, id = value.id || null) {
   const data = encode(uid, "movimientos", value);
   const amount = toMinorUnits(value.monto, value.moneda || "PEN");
   if (amount <= 0 || !["INGRESO", "GASTO"].includes(value.tipo)) throw new Error("El movimiento requiere un importe positivo y un tipo válido.");
-  await fs.runTransaction(db, async (transaction) => {
+  await runAccountingTransaction(db, fs, async (transaction) => {
     const operationSnapshot = await transaction.get(docRef);
     if (operationSnapshot.data()?.anulada) throw new Error("La operación está anulada y no se puede modificar.");
     const oldRow = operationSnapshot.exists() ? decode("movimientos", operationSnapshot.id, operationSnapshot.data()) : null;
@@ -604,7 +617,7 @@ export async function deleteLedgerEntry(uid, collectionName, id) {
   const { db, firestoreSdk: fs } = await getFirebaseServices();
   const docRef = fs.doc(db, ...collectionPath(uid, collectionName), id);
   const eventRefs = [newAccountingEventRef(db, fs, uid), newAccountingEventRef(db, fs, uid)];
-  await fs.runTransaction(db, async (transaction) => {
+  await runAccountingTransaction(db, fs, async (transaction) => {
     const operationSnapshot = await transaction.get(docRef);
     if (!operationSnapshot.exists()) throw new Error("La operación ya no existe. Actualiza la pantalla.");
     if (operationSnapshot.data().anulada) throw new Error("La operación ya está anulada.");
