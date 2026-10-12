@@ -37,6 +37,10 @@ private/
 .pytest_cache/
 .coverage
 *.log
+node_modules/
+.firebase/
+firestore-debug.log
+ui-debug.log
 
 # Windows
 Thumbs.db

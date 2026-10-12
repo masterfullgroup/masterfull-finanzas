@@ -1,11 +1,11 @@
 import { firebaseReady, firebaseStorageAvailable, getFirebaseServices } from "./js/firebase.js";
 import {
-  APP_TIME_ZONE, aggregateByMonth, dateInAppTimeZone, monthBounds, shiftMonth,
+  APP_TIME_ZONE, aggregateByMonth, aggregateCashFlowByMonth, dateInAppTimeZone, monthBounds, reconstructBalanceFromEvents, shiftMonth,
   fromMinorUnits,
 } from "./js/finance.js";
 import {
-  categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, getProfile, listPage,
-  monthTotals, openReceipt, removeDocument, saveDocument, saveLedgerEntry,
+  categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, establishAccountBaseline, getProfile, listPage,
+  monthTotals, openReceipt, removeDocument, saveDebt, saveDebtSettlement, saveDocument, saveLedgerEntry,
   saveMovement, updateUserProfile, uploadReceipt,
 } from "./js/data.js";
 
@@ -50,7 +50,7 @@ const OPTIONS = {
   medioPago: ["EFECTIVO", "CUENTA_BANCARIA", "YAPE", "PLIN", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"],
   tipoTarjeta: ["CREDITO", "DEBITO"],
   entidadTarjeta: ["OH", "CMR", "BCP", "INTERBANK", "BBVA", "SCOTIABANK", "OTRA"],
-  estadoDeuda: ["PENDIENTE", "PAGADA"],
+  estadoDeuda: ["PENDIENTE", "PAGADA"], tipoDeuda: ["POR_PAGAR", "POR_COBRAR"], origenSaldoDeuda: ["SALDO_INICIAL", "PRESTAMO_NUEVO"], principalConfirmado: ["SI", "NO"],
   servicio: ["LUZ", "AGUA", "INTERNET", "ALQUILER", "GAS", "TELÉFONO", "SEGURO", "OTRO"],
   frecuencia: ["MENSUAL", "QUINCENAL", "SEMANAL", "ANUAL"],
 };
@@ -67,7 +67,7 @@ const FIELDS = {
   pagosTarjeta: [["tarjeta_id", "Tarjeta de crédito", "relation", "tarjetas"], ["cuenta_id", "Cuenta de pago", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
   presupuestos: [["categoria_id", "Categoría de gasto", "relation", "categorias"], ["mes", "Mes", "month"], ["limite", "Límite", "money"], ["moneda", "Moneda", "select", "moneda"]],
   metas: [["nombre", "Nombre de la meta", "text"], ["monto_objetivo", "Monto objetivo", "money"], ["monto_actual", "Monto ahorrado", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_objetivo", "Fecha objetivo", "date", null, true]],
-  deudas: [["acreedor", "Acreedor", "text"], ["descripcion", "Descripción", "text", null, true], ["monto_total", "Monto total", "money"], ["monto_pagado", "Monto pagado", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_vencimiento", "Vencimiento", "date", null, true], ["estado", "Estado", "select", "estadoDeuda"]],
+  deudas: [["acreedor", "Persona o entidad", "text"], ["tipo_deuda", "Tipo de deuda", "select", "tipoDeuda"], ["origen_saldo", "Origen del saldo", "select", "origenSaldoDeuda"], ["confirmacion_principal", "¿El importe original representa solo principal?", "select", "principalConfirmado"], ["cuenta_id", "Cuenta asociada", "relation", "cuentas", true], ["persona_id", "Persona relacionada", "relation", "personas", true], ["fecha_operacion", "Fecha del préstamo o saldo confirmado", "date"], ["descripcion", "Descripción", "text", null, true], ["monto_total", "Saldo total original", "money"], ["monto_pagado", "Importe pagado o cobrado anteriormente", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_vencimiento", "Vencimiento", "date", null, true], ["estado", "Estado", "select", "estadoDeuda"]],
   recurrentes: [["nombre", "Nombre", "text"], ["servicio", "Servicio", "select", "servicio"], ["categoria_id", "Categoría", "relation", "categorias"], ["cuenta_id", "Cuenta de pago", "relation", "cuentas", true], ["tarjeta_id", "Tarjeta", "relation", "tarjetas", true], ["medio_pago", "Forma de pago", "select", "medioPago"], ["monto_estimado", "Monto estimado", "money"], ["moneda", "Moneda", "select", "moneda"], ["frecuencia", "Frecuencia", "select", "frecuencia"], ["proxima_fecha", "Próxima fecha", "date"]],
 };
 
@@ -79,7 +79,7 @@ const LIST_FIELDS = {
   transferencias: ["fecha", "cuenta_origen_id", "cuenta_destino_id", "monto", "moneda"],
   pagosTarjeta: ["fecha", "tarjeta_id", "cuenta_id", "monto", "moneda"],
   presupuestos: ["mes", "categoria_id", "limite", "moneda"], metas: ["nombre", "monto_objetivo", "monto_actual", "moneda", "fecha_objetivo"],
-  deudas: ["acreedor", "monto_total", "monto_pagado", "moneda", "fecha_vencimiento", "estado"],
+  deudas: ["acreedor", "tipo_deuda", "origen_saldo", "principal_confirmado", "cuenta_id", "persona_id", "monto_total", "monto_pagado", "moneda", "fecha_vencimiento", "estado"],
   recurrentes: ["nombre", "servicio", "monto_estimado", "moneda", "frecuencia", "proxima_fecha"],
 };
 
@@ -97,7 +97,8 @@ const CURRENCY_SYMBOLS = { PEN: "S/", USD: "US$", EUR: "€", GBP: "£", JPY: "�
 const $ = (selector) => document.querySelector(selector);
 const state = {
   user: null, profile: {}, page: "resumen", data: {}, entityCursor: null, entityHasMore: false,
-  reportRows: [], reportCursor: null, reportHasMore: false, editing: null, filter: {}, busy: false,
+  reportRows: [], reportCursors: {}, reportHasMore: false, editing: null, filter: {}, busy: false,
+  relatedOperationRows: [], debtEvents: [], flowBalances: {}, flowBalancesKnown: false,
   accountFilters: {}, movementAccountFilter: null, dashboardMonth: null, dashboardRange: 6,
 };
 let services = null;
@@ -279,7 +280,7 @@ function bind() {
     const link = event.target.closest("a[data-page]");
     if (!link) return;
     if (link.dataset.movementType) state.filter = { equals: { tipo: link.dataset.movementType } };
-    else if (link.dataset.page === "movimientos") state.filter = {};
+    else if (link.dataset.page === "movimientos") { state.filter = {}; state.movementAccountFilter = null; }
     closeSidebar();
     if (location.hash === link.getAttribute("href")) void route();
   });
@@ -743,6 +744,39 @@ async function loadEntityPage(append) {
     const result = await listPage(state.user.uid, entity, options);
     const old = append ? (state.data[entity] || []) : [];
     state.data[entity] = [...old, ...result.rows];
+    if (entity === "cuentas" && !append) {
+      const baselinePage = await listPage(state.user.uid, "eventosContables", { limit: 500, orderField: "fechaEfectiva", direction: "desc", equals: { eventoTipo: "SALDO_BASE" } });
+      const accountIds = new Set(baselinePage.rows.map((event) => event.cuentaId));
+      state.data.cuentas = state.data.cuentas.map((account) => ({ ...account, hasConfirmedBaseline: accountIds.has(account.id) }));
+    }
+    if (entity === "deudas" && !append) {
+      const history = await listPage(state.user.uid, "eventosContables", { limit: 100, orderField: "registradoEn", direction: "desc" });
+      const debtIds = new Set(state.data.deudas.map((debt) => debt.id));
+      state.debtEvents = history.rows.filter((event) => event.deudaId && debtIds.has(event.deudaId));
+    }
+    if (entity === "movimientos" && !append) {
+      const canIncludeRelated = !options.equals.tipo && !options.equals.categoria_id && !options.equals.persona_id;
+      if (canIncludeRelated) {
+        const plans = state.movementAccountFilter ? [
+          { name: "transferencias", equals: { cuenta_origen_id: state.movementAccountFilter } },
+          { name: "transferencias", equals: { cuenta_destino_id: state.movementAccountFilter } },
+          { name: "pagosTarjeta", equals: { cuenta_id: state.movementAccountFilter } },
+        ] : ["transferencias", "pagosTarjeta"].map((name) => ({ name, equals: {} }));
+        const pages = await Promise.all(plans.map(({ name, equals }) => listPage(state.user.uid, name, {
+          limit: PAGE_SIZE, orderField: "fecha", direction: "desc",
+          startDate: state.filter.startDate, endDate: state.filter.endDate,
+          equals,
+        })));
+        const transferRows = pages.flatMap((page, index) => plans[index].name === "transferencias" ? page.rows : []);
+        const cardPaymentRows = pages.flatMap((page, index) => plans[index].name === "pagosTarjeta" ? page.rows : []);
+        state.data.transferencias = [...new Map(transferRows.map((row) => [row.id, row])).values()];
+        state.data.pagosTarjeta = [...new Map(cardPaymentRows.map((row) => [row.id, row])).values()];
+        state.relatedOperationRows = pages.flatMap((page, index) => page.rows
+          .map((row) => ({ ...row, operationCollection: plans[index].name })))
+          .filter((row, index, rows) => rows.findIndex((item) => item.operationCollection === row.operationCollection && item.id === row.id) === index)
+          .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+      } else state.relatedOperationRows = [];
+    }
     state.entityCursor = result.cursor;
     state.entityHasMore = result.hasMore;
     renderEntity(entity);
@@ -763,7 +797,7 @@ function renderAccounts() {
     group[code] = (group[code] || 0) + Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0);
     return group;
   }, {});
-  const cards = rows.map((item) => `<article class="account-card"><span class="account-icon">${esc((item.nombre || "C")[0].toUpperCase())}</span><div class="account-main"><strong>${esc(item.nombre)}</strong><small>${esc(optionLabel(item.tipo))} · ${esc(relationLabel("propietario_id", item.propietario_id))}${item.institucion_id ? ` · ${esc(relationLabel("institucion_id", item.institucion_id))}` : ""}</small><span class="badge">${esc(optionLabel(item.estado || "ACTIVA"))}</span></div><div class="account-balance"><strong>${moneyFromMinor(item.saldoActualMinor ?? item.saldoInicialMinor, item.moneda)}</strong><small>${esc(item.moneda || "PEN")}</small></div><div class="account-actions"><button type="button" data-account-movements="${esc(item.id)}">Movimientos</button><button type="button" data-edit="cuentas" data-id="${esc(item.id)}">Editar</button><button type="button" class="danger" data-delete="cuentas" data-id="${esc(item.id)}">Eliminar</button></div></article>`).join("");
+  const cards = rows.map((item) => `<article class="account-card"><span class="account-icon">${esc((item.nombre || "C")[0].toUpperCase())}</span><div class="account-main"><strong>${esc(item.nombre)}</strong><small>${esc(optionLabel(item.tipo))} · ${esc(relationLabel("propietario_id", item.propietario_id))}${item.institucion_id ? ` · ${esc(relationLabel("institucion_id", item.institucion_id))}` : ""}</small><span class="badge">${esc(optionLabel(item.estado || "ACTIVA"))}</span></div><div class="account-balance"><strong>${moneyFromMinor(item.saldoActualMinor ?? item.saldoInicialMinor, item.moneda)}</strong><small>${esc(item.moneda || "PEN")}</small></div><div class="account-actions"><button type="button" data-account-movements="${esc(item.id)}">Movimientos</button>${item.hasConfirmedBaseline ? `<span class="badge">Corte confirmado</span>` : `<button type="button" data-account-baseline="${esc(item.id)}">Confirmar corte</button>`}<button type="button" data-edit="cuentas" data-id="${esc(item.id)}">Editar</button><button type="button" class="danger" data-delete="cuentas" data-id="${esc(item.id)}">Eliminar</button></div></article>`).join("");
   const summary = Object.entries(totals).map(([code, value]) => `<article><span>Saldo total · ${esc(code)}</span><strong>${moneyFromMinor(value, code)}</strong><small>${active.filter((item) => (item.moneda || "PEN") === code).length} cuentas activas</small></article>`).join("");
   const clearHistory = state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : "";
   $("#content").innerHTML = `<section class="account-summary">${summary || `<article><span>Saldo total</span><strong>${money(0, currency)}</strong><small>Aún no tienes cuentas</small></article>`}</section><form class="account-filters panel" data-account-filter-form><input name="q" type="search" placeholder="Buscar cuenta, titular o institución" value="${esc(filters.q || "")}"><select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoCuenta.map((type) => `<option value="${type}" ${filters.tipo === type ? "selected" : ""}>${esc(optionLabel(type))}</option>`).join("")}</select><select name="moneda"><option value="">Todas las monedas</option>${OPTIONS.moneda.map((code) => `<option value="${code}" ${filters.moneda === code ? "selected" : ""}>${esc(optionLabel(code))}</option>`).join("")}</select><select name="estado"><option value="">Todos los estados</option><option value="ACTIVA" ${filters.estado === "ACTIVA" ? "selected" : ""}>Activa</option><option value="INACTIVA" ${filters.estado === "INACTIVA" ? "selected" : ""}>Inactiva</option></select><button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-account-clear>Limpiar</button>${clearHistory}</form><section class="account-list">${cards || `<p class="panel empty">No hay cuentas que coincidan con estos filtros.</p>`}</section>`;
@@ -796,7 +830,8 @@ function cellValue(entity, key, row) {
   if (key === "comprobante") return row.attachment?.path ? firebaseStorageAvailable ? `<button class="link-button" data-open-receipt="${esc(row.attachment.path)}">${esc(row.attachment.name || "Abrir")}</button>` : `<span class="caption">No disponible (Storage desactivado)</span>` : "—";
   if (["categoria_id", "cuenta_id", "tarjeta_id", "persona_id", "propietario_id", "institucion_id", "cuenta_origen_id", "cuenta_destino_id"].includes(key)) return esc(relationLabel(key, value));
   if (["monto", "limite", "saldo_actual", "linea_credito", "utilizado", "monto_objetivo", "monto_actual", "monto_total", "monto_pagado", "monto_estimado"].includes(key)) return `<strong>${esc(money(value, row.moneda || "PEN"))}</strong>`;
-  if (key === "estado" || key === "tipo" || key === "medio_pago") return `<span class="badge ${esc(String(value || "").toLowerCase())}">${esc(optionLabel(value))}</span>`;
+  if (key === "principal_confirmado") return `<span class="badge">${value === true ? "Principal confirmado" : "Principal pendiente de confirmar"}</span>`;
+  if (["estado", "tipo", "medio_pago", "tipo_deuda", "origen_saldo"].includes(key)) return `<span class="badge ${esc(String(value || "").toLowerCase())}">${esc(optionLabel(value))}</span>`;
   if (key === "mes" && String(value).length > 7) return esc(String(value).slice(0, 7));
   return esc(value || "—");
 }
@@ -838,17 +873,34 @@ function renderEntity(entity) {
   const rows = state.data[entity] || [];
   const fields = LIST_FIELDS[entity] || [];
   const filterable = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
-  const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
+  const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select><select name="categoria_id"><option value="">Todas las categorías</option>${(state.data.categorias || []).filter((row) => !state.filter.equals?.tipo || row.tipo === state.filter.equals.tipo).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.categoria_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select><select name="persona_id"><option value="">Todas las personas</option>${(state.data.personas || []).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.persona_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
   const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
-  const visibleRows = entity === "instituciones" ? institutionRows : rows;
+  const visibleRows = entity === "instituciones" ? institutionRows : entity === "tarjetas" ? rows.filter((row) => !row.archivada) : rows;
   if (entity === "personas") {
     $("#content").innerHTML = renderPeople(visibleRows) + (state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : "");
     return;
   }
   const columns = fields.map((key) => `<th>${esc(fieldLabel(key))}</th>`).join("");
-  const body = visibleRows.length ? visibleRows.map((row) => `<tr>${fields.map((key) => `<td${entity === "movimientos" ? ` data-label="${esc(fieldLabel(key))}"` : ""}>${cellValue(entity, key, row)}</td>`).join("")}<td class="actions"${entity === "movimientos" ? ` data-label="Acciones"` : ""}>${row.base ? `<span class="caption">Catálogo</span>` : `<button type="button" data-edit="${entity}" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="${entity}" data-id="${esc(row.id)}">Eliminar</button>`}</td></tr>`).join("") : `<tr><td colspan="${fields.length + 1}" class="empty">Todavía no hay ${esc(meta.title.toLowerCase())}.</td></tr>`;
+  const body = visibleRows.length ? visibleRows.map((row) => `<tr>${fields.map((key) => `<td${entity === "movimientos" ? ` data-label="${esc(fieldLabel(key))}"` : ""}>${cellValue(entity, key, row)}</td>`).join("")}<td class="actions"${entity === "movimientos" ? ` data-label="Acciones"` : ""}>${row.base ? `<span class="caption">Catálogo</span>` : `${entity === "deudas" && row.tipo_deuda && row.estado !== "PAGADA" ? `<button type="button" data-settle-debt="${esc(row.id)}">Registrar pago/cobro</button>` : ""}<button type="button" data-edit="${entity}" data-id="${esc(row.id)}">Editar</button>${row.anulada ? `<span class="badge">Anulada</span>` : `<button type="button" class="danger" data-delete="${entity}" data-id="${esc(row.id)}">Anular</button>`}`}</td></tr>`).join("") : `<tr><td colspan="${fields.length + 1}" class="empty">Todavía no hay ${esc(meta.title.toLowerCase())}.</td></tr>`;
+  const debtHistory = entity === "deudas" ? `<section class="panel table-panel"><div class="section-head"><div><h2>Historial de deuda</h2><p class="caption">Eventos inmutables recientes; las correcciones conservan fecha efectiva y hora de registro.</p></div></div><div class="table-scroll"><table><thead><tr><th>Fecha efectiva</th><th>Deuda</th><th>Operación</th><th>Efectivo</th><th>Principal</th><th>Registrado</th></tr></thead><tbody>${state.debtEvents.length ? state.debtEvents.map((event) => {
+    const debt = (state.data.deudas || []).find((item) => item.id === event.deudaId);
+    const registeredAt = event.registradoEn?.toDate?.() || event.registradoEn;
+    const registeredLabel = registeredAt ? new Date(registeredAt).toLocaleString("es-PE") : "—";
+    return `<tr><td>${esc(shortDate(event.fechaEfectiva))}</td><td>${esc(debt?.acreedor || event.deudaId)}</td><td>${esc(optionLabel(event.eventoTipo))}${event.componenteDeuda ? ` · ${esc(optionLabel(event.componenteDeuda))}` : ""}${event.eventoRelacionadoId ? " · Corrección vinculada" : ""}</td><td>${esc(moneyFromMinor(event.montoDeltaMinor, event.moneda))}</td><td>${esc(moneyFromMinor(event.deltaPrincipalMinor, event.moneda))}</td><td>${esc(registeredLabel)}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">Todavía no hay operaciones de deuda registradas.</td></tr>`}</tbody></table></div></section>` : "";
   const responsiveTableClass = entity === "movimientos" ? " movement-cards" : "";
-  $("#content").innerHTML = `${filters}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(meta.title)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll${responsiveTableClass}"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
+  const relatedRows = entity === "movimientos" ? state.relatedOperationRows.map((row) => {
+    const transfer = row.operationCollection === "transferencias";
+    const title = transfer
+      ? `${relationLabel("cuenta_origen_id", row.cuenta_origen_id)} → ${relationLabel("cuenta_destino_id", row.cuenta_destino_id)}`
+      : `${relationLabel("tarjeta_id", row.tarjeta_id)} · ${relationLabel("cuenta_id", row.cuenta_id)}`;
+    const kind = transfer ? "Transferencia interna" : "Pago de tarjeta";
+    const amount = moneyFromMinor(row.montoMinor, row.moneda || "PEN");
+    return `<tr><td>${esc(shortDate(row.fecha))}</td><td>${esc(kind)}</td><td>${esc(row.descripcion || title)}</td><td>${transfer ? "Neutro" : "Salida de efectivo"}</td><td>${transfer ? "" : "−"}${esc(amount)}</td><td class="actions"><button type="button" data-edit="${row.operationCollection}" data-id="${esc(row.id)}">Editar</button><button type="button" class="danger" data-delete="${row.operationCollection}" data-id="${esc(row.id)}">Eliminar</button></td></tr>`;
+  }).join("") : "";
+  const relatedPanel = entity === "movimientos" && !state.filter.equals?.tipo && !state.filter.equals?.categoria_id && !state.filter.equals?.persona_id
+    ? `<section class="panel table-panel"><div class="section-head"><div><h2>Transferencias y pagos de tarjeta</h2><p class="caption">Operaciones enlazadas a sus registros originales; no se duplican como ingresos o gastos. Abre cada módulo para consultar y paginar el historial completo.</p></div><a class="link-button" href="#transferencias">Ver transferencias</a><a class="link-button" href="#pagosTarjeta">Ver pagos de tarjetas</a></div><div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Efecto en flujo</th><th>Importe</th><th>Acciones</th></tr></thead><tbody>${relatedRows || `<tr><td colspan="6" class="empty">No hay transferencias ni pagos de tarjeta para los filtros actuales.</td></tr>`}</tbody></table></div></section>` : "";
+  $("#content").innerHTML = `${filters}${relatedPanel}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(meta.title)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll${responsiveTableClass}"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${debtHistory}${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
 }
 
 async function applyFilters(form) {
@@ -857,7 +909,8 @@ async function applyFilters(form) {
     state.accountFilters = values;
     return renderAccounts();
   }
-  state.filter = { startDate: values.startDate, endDate: values.endDate, equals: values.tipo ? { tipo: values.tipo } : {} };
+  const equals = Object.fromEntries(["tipo", "categoria_id", "persona_id"].filter((field) => values[field]).map((field) => [field, values[field]]));
+  state.filter = { startDate: values.startDate, endDate: values.endDate, equals };
   state.data[state.page] = [];
   state.entityCursor = null;
   await loadEntityPage(false);
@@ -869,21 +922,101 @@ async function loadReports(append) {
   const start = `${shiftMonth(current, -11)}-01`;
   const end = monthBounds(current).end;
   try {
-    const result = await listPage(state.user.uid, "movimientos", { limit: REPORT_LIMIT, cursor: append ? state.reportCursor : null, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: state.profile.currency || "PEN" } });
-    state.reportRows = append ? [...state.reportRows, ...result.rows] : result.rows;
-    state.reportCursor = result.cursor;
-    state.reportHasMore = result.hasMore;
+    const names = ["movimientos", "transferencias", "pagosTarjeta"];
+    const pages = await Promise.all([...names.map((name) => listPage(state.user.uid, name, {
+      limit: REPORT_LIMIT, cursor: append ? state.reportCursors[name] : null,
+      orderField: "fecha", direction: "desc", startDate: start, endDate: end,
+      equals: { moneda: state.profile.currency || "PEN" },
+    })), listPage(state.user.uid, "eventosContables", {
+      limit: REPORT_LIMIT, cursor: append ? state.reportCursors.eventosContables : null,
+      orderField: "fechaEfectiva", dateField: "fechaEfectiva", direction: "desc", startDate: start, endDate: end,
+      equals: { moneda: state.profile.currency || "PEN" },
+    })]);
+    if (state.page === "flujo") {
+      const currency = state.profile.currency || "PEN";
+      const [accountPage, historyPage] = await Promise.all([
+        listPage(state.user.uid, "cuentas", { limit: 500, orderField: "createdAt", direction: "asc" }),
+        listPage(state.user.uid, "eventosContables", { limit: 500, orderField: "fechaEfectiva", dateField: "fechaEfectiva", direction: "asc", endDate: end, equals: { moneda: currency } }),
+      ]);
+      state.flowBalancesKnown = !accountPage.hasMore && !historyPage.hasMore;
+      state.flowBalances = {};
+      if (state.flowBalancesKnown) {
+        const accounts = accountPage.rows.filter((account) => (account.moneda || "PEN") === currency);
+        const flowMonths = Array.from({ length: 12 }, (_, index) => shiftMonth(current, index - 11));
+        for (const month of flowMonths) {
+          const bounds = monthBounds(month);
+          const previousDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 0)).toISOString().slice(0, 10);
+          const sumFor = (date) => {
+            let total = 0;
+            for (const account of accounts) {
+              const created = account.createdAt?.toDate?.() || account.createdAt;
+              const createdDay = created ? (created instanceof Date ? dateInAppTimeZone(created) : String(created).slice(0, 10)) : null;
+              if (createdDay && createdDay > date) continue;
+              const history = historyPage.rows.filter((event) => event.cuentaId === account.id);
+              const balance = reconstructBalanceFromEvents(history, date);
+              if (!balance.known) return { known: false, amount: null };
+              total += balance.balanceMinor;
+            }
+            return { known: true, amount: total };
+          };
+          state.flowBalances[month] = { opening: sumFor(previousDay), closing: sumFor(bounds.end) };
+        }
+      }
+    }
+    const legacyRows = pages.slice(0, names.length).flatMap((page, index) => page.rows
+      .filter((row) => !row.eventoContableId || row.legacyEventAnchor)
+      .map((row) => ({ ...(row.legacyEventAnchorSnapshot || row), id: row.id, operationCollection: names[index], legacyEventAnchor: Boolean(row.legacyEventAnchor) })));
+    const eventRows = pages[3].rows.map((event) => ({
+      ...event.operacionSnapshot,
+      id: event.id, operationCollection: "eventosContables", sourceOperationCollection: event.operacionColeccion,
+      eventoTipo: event.eventoTipo, eventoRelacionadoId: event.eventoRelacionadoId,
+      fecha: event.fechaEfectiva, montoDeltaMinor: Number(event.montoDeltaMinor || 0),
+      deltaResultadoMinor: Number(event.deltaResultadoMinor || 0),
+      deltaIngresoMinor: Number(event.deltaIngresoMinor || 0), deltaGastoMinor: Number(event.deltaGastoMinor || 0),
+      montoMinor: Math.abs(Number(event.montoDeltaMinor || 0)),
+      tipo: Number(event.deltaResultadoMinor || event.montoDeltaMinor || 0) >= 0 ? "INGRESO" : "GASTO",
+      medio_pago: event.operacionSnapshot?.medio_pago || "EFECTIVO",
+      impacto_resultado: event.impactoResultado,
+      legacyEventAnchor: Boolean(event.operacionSnapshot?.legacyEventAnchor),
+    }));
+    const nextRows = [...legacyRows, ...eventRows];
+    state.reportRows = append ? [...state.reportRows, ...nextRows] : nextRows;
+    state.reportCursors = Object.fromEntries([...names, "eventosContables"].map((name, index) => [name, pages[index].cursor]));
+    state.reportHasMore = pages.some((page) => page.hasMore);
     renderReports();
   } catch (error) { showDataError(error); }
 }
 
 function renderReports() {
   const currency = state.profile.currency || "PEN";
-  const grouped = aggregateByMonth(state.reportRows);
+  const movements = state.reportRows.filter((row) => ["movimientos", "eventosContables"].includes(row.operationCollection));
+  const grouped = aggregateByMonth(movements);
   const rows = Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a));
   const totals = rows.reduce((result, [, row]) => ({ incomeMinor: result.incomeMinor + row.incomeMinor, expenseMinor: result.expenseMinor + row.expenseMinor }), { incomeMinor: 0, expenseMinor: 0 });
+  if (state.page === "flujo") {
+    const monthly = aggregateCashFlowByMonth(state.reportRows);
+    for (let offset = -11; offset <= 0; offset += 1) monthly[shiftMonth(currentMonth(), offset)] ??= { incomeMinor: 0, expenseMinor: 0, transfers: 0, cardPayments: 0 };
+    const flowRows = Object.entries(monthly).sort(([a], [b]) => b.localeCompare(a));
+    const flowTotals = flowRows.reduce((sum, [, row]) => ({ income: sum.income + row.incomeMinor, expense: sum.expense + row.expenseMinor }), { income: 0, expense: 0 });
+    const body = flowRows.length ? flowRows.map(([month, row]) => {
+      const balances = state.flowBalances[month];
+      const opening = balances?.opening?.known ? moneyFromMinor(balances.opening.amount, currency) : "No disponible";
+      const closing = balances?.closing?.known ? moneyFromMinor(balances.closing.amount, currency) : "No disponible";
+      return `<tr><td><strong>${esc(month)}</strong><small>${row.transfers} transferencias internas · ${row.cardPayments} pagos de tarjeta</small></td><td>${esc(opening)}</td><td class="positive">${moneyFromMinor(row.incomeMinor, currency)}</td><td class="negative">${moneyFromMinor(row.expenseMinor, currency)}</td><td><strong>${moneyFromMinor(row.incomeMinor - row.expenseMinor, currency)}</strong></td><td>${esc(closing)}</td></tr>`;
+    }).join("") : `<tr><td colspan="6" class="empty">No hay operaciones de efectivo para este periodo.</td></tr>`;
+    const coverage = state.reportHasMore ? "Hay más operaciones; carga la siguiente página para completar los totales." : "Historial completo disponible para el periodo consultado.";
+    $("#content").innerHTML = `<section class="stats"><article class="stat-card"><span>ENTRADAS DE EFECTIVO · 12 MESES</span><strong class="positive">${moneyFromMinor(flowTotals.income, currency)}</strong></article><article class="stat-card"><span>SALIDAS DE EFECTIVO · 12 MESES</span><strong class="negative">${moneyFromMinor(flowTotals.expense, currency)}</strong></article><article class="stat-card"><span>VARIACIÓN NETA</span><strong>${moneyFromMinor(flowTotals.income - flowTotals.expense, currency)}</strong></article></section><section class="panel table-panel"><div class="section-head"><div><h2>Flujo mensual de efectivo</h2><p class="caption">Las transferencias internas no alteran el total del efectivo. Los saldos inicial y final se muestran solo cuando existe una línea base confirmada y el historial está completo; ${state.reportRows.length} operaciones cargadas. ${coverage}</p></div></div><div class="table-scroll"><table><thead><tr><th>Periodo</th><th>Saldo inicial</th><th>Entradas</th><th>Salidas</th><th>Variación neta</th><th>Saldo final</th></tr></thead><tbody>${body}</tbody></table></div></section>${state.reportHasMore ? `<div class="load-more"><button class="btn secondary" data-load-report-more>Cargar más</button></div>` : ""}`;
+    return;
+  }
   const html = rows.length ? rows.map(([month, row]) => `<tr><td><strong>${esc(month)}</strong></td><td class="positive">${moneyFromMinor(row.incomeMinor, currency)}</td><td class="negative">${moneyFromMinor(row.expenseMinor, currency)}</td><td><strong>${moneyFromMinor(row.incomeMinor - row.expenseMinor, currency)}</strong></td></tr>`).join("") : `<tr><td colspan="4" class="empty">Registra movimientos para generar el análisis.</td></tr>`;
-  $("#content").innerHTML = `<section class="stats"><article class="stat-card"><span>INGRESOS · ÚLTIMOS 12 MESES</span><strong class="positive">${moneyFromMinor(totals.incomeMinor, currency)}</strong></article><article class="stat-card"><span>EGRESOS · ÚLTIMOS 12 MESES</span><strong class="negative">${moneyFromMinor(totals.expenseMinor, currency)}</strong></article><article class="stat-card"><span>BALANCE DEL MES</span><strong>${moneyFromMinor((grouped[currentMonth()]?.incomeMinor || 0) - (grouped[currentMonth()]?.expenseMinor || 0), currency)}</strong></article></section><section class="panel table-panel"><div class="section-head"><div><h2>Flujo mensual</h2><p class="caption">${esc(shiftMonth(currentMonth(), -11))} a ${esc(currentMonth())} · ${state.reportRows.length} movimientos consultados en ${esc(currency)}</p></div></div><div class="table-scroll"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Egresos</th><th>Balance</th></tr></thead><tbody>${html}</tbody></table></div></section>${state.reportHasMore ? `<div class="load-more"><button class="btn secondary" data-load-report-more>Cargar más</button></div>` : ""}`;
+  const categoryTotals = movements.filter((row) => row.deltaResultadoMinor < 0 || (!Number.isFinite(row.deltaResultadoMinor) && row.tipo === "GASTO")).reduce((totalsByCategory, row) => {
+    const id = row.categoria_id || "sin-categoria";
+    totalsByCategory[id] = (totalsByCategory[id] || 0) + (Number.isFinite(row.deltaResultadoMinor) ? Math.abs(row.deltaResultadoMinor) : Number(row.montoMinor || 0));
+    return totalsByCategory;
+  }, {});
+  const categories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+  const categoryRows = categories.length ? categories.map(([id, amount]) => `<tr><td>${esc(id === "sin-categoria" ? "Sin categoría" : relationLabel("categoria_id", id))}</td><td class="negative">${moneyFromMinor(amount, currency)}</td></tr>`).join("") : `<tr><td colspan="2" class="empty">Sin gastos categorizados en el periodo.</td></tr>`;
+  $("#content").innerHTML = `<section class="stats"><article class="stat-card"><span>INGRESOS · ÚLTIMOS 12 MESES</span><strong class="positive">${moneyFromMinor(totals.incomeMinor, currency)}</strong></article><article class="stat-card"><span>GASTOS RECONOCIDOS</span><strong class="negative">${moneyFromMinor(totals.expenseMinor, currency)}</strong></article><article class="stat-card"><span>BALANCE DEL MES</span><strong>${moneyFromMinor((grouped[currentMonth()]?.incomeMinor || 0) - (grouped[currentMonth()]?.expenseMinor || 0), currency)}</strong></article></section><section class="panel table-panel"><div class="section-head"><div><h2>Ingresos y gastos por mes</h2><p class="caption">${esc(shiftMonth(currentMonth(), -11))} a ${esc(currentMonth())} · ${movements.length} movimientos/eventos consultados en ${esc(currency)}. El principal de préstamos y deudas no se reconoce como ingreso ni gasto.</p></div></div><div class="table-scroll"><table><thead><tr><th>Periodo</th><th>Ingresos</th><th>Gastos</th><th>Balance</th></tr></thead><tbody>${html}</tbody></table></div></section><section class="panel table-panel"><div class="section-head"><div><h2>Gastos por categoría</h2><p class="caption">Calculado desde movimientos reales cargados.</p></div></div><div class="table-scroll"><table><thead><tr><th>Categoría</th><th>Gasto</th></tr></thead><tbody>${categoryRows}</tbody></table></div></section>${state.reportHasMore ? `<div class="load-more"><button class="btn secondary" data-load-report-more>Cargar más</button></div>` : ""}`;
 }
 
 function renderProfile() {
@@ -916,7 +1049,7 @@ function fieldLabel(field) {
 }
 
 function optionLabel(value = "") {
-  const labels = { PEN: "PEN · Sol peruano", USD: "USD · Dólar estadounidense", EUR: "EUR · Euro", GBP: "GBP · Libra esterlina", JPY: "JPY · Yen", CLP: "CLP · Peso chileno", COP: "COP · Peso colombiano", MXN: "MXN · Peso mexicano", BRL: "BRL · Real", PERSONA: "Persona", EMPRESA: "Empresa", COMPARTIDA: "Compartida", INGRESO: "Ingreso", GASTO: "Gasto", CREDITO: "Crédito", DEBITO: "Débito", PENDIENTE: "Pendiente", PAGADA: "Pagada", ACTIVA: "Activa", INACTIVA: "Inactiva", ARCHIVADA: "Archivada", ACTIVO: "Activo", PASIVO: "Pasivo", TITULAR: "Titular", PAREJA: "Pareja", HIJO: "Hijo/a", FAMILIAR: "Familiar", EFECTIVO: "Efectivo", BANCO: "Banco", YAPE: "Yape", PLIN: "Plin", TARJETA_DEBITO: "Tarjeta de débito", TARJETA_CREDITO: "Tarjeta de crédito", CUENTA_BANCARIA: "Cuenta bancaria", BILLETERA_DIGITAL: "Billetera digital", COOPERATIVA: "Cooperativa", FINANCIERA: "Financiera", OTRA: "Otra", OTRO: "Otro", SEMANAL: "Semanal", QUINCENAL: "Quincenal", MENSUAL: "Mensual", ANUAL: "Anual" };
+  const labels = { PEN: "PEN · Sol peruano", USD: "USD · Dólar estadounidense", EUR: "EUR · Euro", GBP: "GBP · Libra esterlina", JPY: "JPY · Yen", CLP: "CLP · Peso chileno", COP: "COP · Peso colombiano", MXN: "MXN · Peso mexicano", BRL: "BRL · Real", PERSONA: "Persona", EMPRESA: "Empresa", COMPARTIDA: "Compartida", INGRESO: "Ingreso", GASTO: "Gasto", NINGUNO: "Sin efecto en resultados", POR_PAGAR: "Cuenta por pagar · debo", POR_COBRAR: "Cuenta por cobrar · me deben", SALDO_INICIAL: "Saldo inicial confirmado", PRESTAMO_NUEVO: "Préstamo nuevo", SI: "Sí, es principal", NO: "No confirmado como principal", SALDO_BASE: "Línea base", MOVIMIENTO: "Movimiento", TRANSFERENCIA: "Transferencia", PAGO_TARJETA: "Pago de tarjeta", PRESTAMO: "Préstamo", PAGO_PRINCIPAL: "Pago de principal", INTERES: "Interés", COMISION: "Comisión", REVERSIÓN: "Reversión", AJUSTE: "Ajuste", PRINCIPAL: "Principal", CREDITO: "Crédito", DEBITO: "Débito", PENDIENTE: "Pendiente", PAGADA: "Pagada", ACTIVA: "Activa", INACTIVA: "Inactiva", ARCHIVADA: "Archivada", ACTIVO: "Activo", PASIVO: "Pasivo", TITULAR: "Titular", PAREJA: "Pareja", HIJO: "Hijo/a", FAMILIAR: "Familiar", EFECTIVO: "Efectivo", BANCO: "Banco", YAPE: "Yape", PLIN: "Plin", TARJETA_DEBITO: "Tarjeta de débito", TARJETA_CREDITO: "Tarjeta de crédito", CUENTA_BANCARIA: "Cuenta bancaria", BILLETERA_DIGITAL: "Billetera digital", COOPERATIVA: "Cooperativa", FINANCIERA: "Financiera", OTRA: "Otra", OTRO: "Otro", SEMANAL: "Semanal", QUINCENAL: "Quincenal", MENSUAL: "Mensual", ANUAL: "Anual" };
   return labels[value] || String(value).toLowerCase().replaceAll("_", " ");
 }
 
@@ -924,7 +1057,7 @@ function getOptions(key, field) {
   if (OPTIONS[key]) return OPTIONS[key];
   if (key === "estadoCuenta") return ["ACTIVA", "INACTIVA", "ARCHIVADA"];
   if (key === "cuentas") return (state.data.cuentas || []).filter((row) => row.estado !== "ARCHIVADA");
-  if (key === "tarjetas") return state.data.tarjetas || [];
+  if (key === "tarjetas") return (state.data.tarjetas || []).filter((row) => !row.archivada);
   if (key === "personas") return state.data.personas || [];
   if (key === "propietarios") return (state.data.propietarios || []).filter((row) => row.estado !== "INACTIVO");
   if (key === "instituciones") return state.data.instituciones || BASE_INSTITUTIONS;
@@ -952,7 +1085,8 @@ function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
   if (type === "month" && inputValue) inputValue = String(inputValue).slice(0, 7);
   if (["date", "month"].includes(type) && !inputValue) inputValue = type === "month" ? currentMonth() : todayISO();
   if (["date", "month"].includes(type)) return `<div class="field-control" data-field="${field}"><label for="date-${esc(field)}">${esc(label)}</label>${dateControlMarkup(field, inputValue, type, !optional, `date-${field}`)}</div>`;
-  const step = type === "money" ? 'step="0.01" min="0.01" inputmode="decimal"' : type === "number" ? 'step="1" min="0" inputmode="numeric"' : "";
+  const zeroAllowed = ["saldo_inicial", "saldo_inicial_usado", "monto_pagado", "monto_actual"].includes(field);
+  const step = type === "money" ? `step="0.01" min="${zeroAllowed ? "0" : "0.01"}" inputmode="decimal"` : type === "number" ? 'step="1" min="0" inputmode="numeric"' : "";
   return `<label data-field="${field}">${esc(label)}<input name="${field}" type="${type === "money" ? "number" : type}" ${step} value="${esc(inputValue)}" ${optionalAttr}></label>`;
 }
 
@@ -964,6 +1098,8 @@ function openForm(entity, row = null, preset = {}) {
     moneda: state.profile.currency || "PEN", fecha: todayISO(), fecha_saldo_inicial: todayISO(), mes: currentMonth(),
     saldo_inicial: 0, saldo_inicial_usado: 0, monto_pagado: 0, monto_actual: 0, numero_cuotas: 1,
     tipo: entity === "propietarios" ? "PERSONA" : entity === "tarjetas" ? "CREDITO" : "GASTO",
+    tipo_deuda: row?.tipo_deuda || "", origen_saldo: row?.origen_saldo || "SALDO_INICIAL",
+    confirmacion_principal: row ? (row.principal_confirmado ? "SI" : "NO") : "NO",
     medio_pago: "CUENTA_BANCARIA", estado: "ACTIVA", estado_deuda: "PENDIENTE",
   };
   const fields = FIELDS[entity].map(([name, label, type, options, optional]) => {
@@ -974,6 +1110,27 @@ function openForm(entity, row = null, preset = {}) {
   const attachment = entity === "movimientos" ? firebaseStorageAvailable ? `<label class="wide">Comprobante (imagen o PDF, máximo 10 MB)<input id="receipt-file" name="comprobanteFile" type="file" accept="image/*,application/pdf"><small>${row?.attachment?.name ? `Actual: ${esc(row.attachment.name)}. Al elegir otro se reemplazará.` : "El archivo será privado y accesible solo desde tu cuenta."}</small></label>${row?.attachment?.path ? `<label class="wide"><span><input name="removeAttachment" type="checkbox" value="1"> Quitar comprobante actual</span></label>` : ""}` : `<p class="field-help wide">Comprobantes temporalmente no disponibles: Firebase Storage aún no está habilitado. Puedes guardar el movimiento sin adjunto.</p>` : "";
   $("#form-fields").innerHTML = `<div id="flow-guidance" class="flow-guidance wide"></div>${fields}${attachment}`;
   updateFormFlow();
+  $("#record-dialog").showModal();
+}
+
+function openDebtSettlement(debt) {
+  const accounts = (state.data.cuentas || []).filter((account) => account.moneda === debt.moneda);
+  if (!accounts.length) { toast("Crea una cuenta en la misma moneda antes de registrar pagos o cobros."); return; }
+  state.editing = { entity: "debtSettlement", id: debt.id, row: debt };
+  $("#dialog-title").textContent = debt.tipo_deuda === "POR_PAGAR" ? "Registrar pago de principal" : "Registrar cobro de principal";
+  const options = accounts.map((account) => `<option value="${esc(account.id)}" ${account.id === debt.cuenta_id ? "selected" : ""}>${esc(account.nombre)} · ${esc(moneyFromMinor(account.saldoActualMinor ?? account.saldoInicialMinor, account.moneda))}</option>`).join("");
+  const outstanding = Math.max(0, Number(debt.montoTotalMinor || 0) - Number(debt.montoPagadoMinor || 0));
+  const principalHelp = debt.principal_confirmado === true ? `Saldo de principal pendiente: <strong>${esc(moneyFromMinor(outstanding, debt.moneda))}</strong>.` : "El principal anterior no está confirmado; registra intereses/comisiones ahora y confirma el principal antes de amortizar.";
+  const principalDisabled = debt.principal_confirmado === true ? "" : "disabled";
+  $("#form-fields").innerHTML = `<p class="field-help wide">${principalHelp} El principal no se registra como ingreso ni gasto; intereses y comisiones se separan.</p><label>Cuenta afectada<select name="cuenta_id" required>${options}</select></label><label>Fecha efectiva<input name="fecha" type="date" value="${todayISO()}" required></label><label>Principal ${debt.tipo_deuda === "POR_PAGAR" ? "pagado" : "cobrado"}<input name="principal" type="number" min="0" step="0.01" value="0" ${principalDisabled}></label><label>Interés<input name="interes" type="number" min="0" step="0.01" value="0"></label><label>Comisión<input name="comision" type="number" min="0" step="0.01" value="0"></label><label class="wide">Descripción<input name="descripcion" maxlength="200" placeholder="Opcional"></label>`;
+  $("#record-dialog").showModal();
+}
+
+function openAccountBaseline(account) {
+  state.editing = { entity: "accountBaseline", id: account.id, row: account };
+  $("#dialog-title").textContent = "Confirmar saldo inicial";
+  const amount = fromMinorUnits(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0, account.moneda);
+  $("#form-fields").innerHTML = `<p class="field-help wide">Este valor crea una línea base de auditoría. Debe coincidir con el saldo actual guardado y confirmado; no cambia el saldo de la cuenta.</p><label>Saldo confirmado (${esc(account.moneda)})<input name="confirmedBalance" type="number" min="0" step="0.01" value="${amount}" required></label><label>Fecha efectiva de corte<input name="effectiveDate" type="date" value="${todayISO()}" required></label>`;
   $("#record-dialog").showModal();
 }
 
@@ -1010,6 +1167,11 @@ function updateFormFlow(target) {
     const requiresInstitution = ["BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "BILLETERA_DIGITAL"].includes(type);
     hide("institucion_id", !requiresInstitution);
     guidance.textContent = type ? `${optionLabel(type)} se organizará como ${ACCOUNT_NATURE[type] || "ACTIVO"}.` : "Asigna un titular y selecciona el tipo de cuenta.";
+  } else if (entity === "deudas") {
+    if (target?.name === "origen_saldo" && form.elements.origen_saldo.value === "PRESTAMO_NUEVO") form.elements.confirmacion_principal.value = "SI";
+    guidance.textContent = form.elements.origen_saldo.value === "PRESTAMO_NUEVO"
+      ? "El préstamo nuevo registra principal, efectivo y deuda en una sola transacción."
+      : "Para deudas anteriores, confirma si los importes registrados representan solo principal antes de registrar amortizaciones.";
   } else if (guidance) guidance.hidden = true;
 }
 
@@ -1079,6 +1241,21 @@ function validateRecord(entity, value, row) {
     if (value.tipo === "CREDITO" && (!value.linea_credito || !value.dia_cierre || !value.dia_pago)) throw new Error("Completa la línea de crédito, fecha de facturación y último día de pago.");
   }
   if (entity === "deudas" && value.monto_pagado > value.monto_total) throw new Error("El importe pagado no puede superar la deuda total.");
+  if (entity === "deudas") {
+    if (!value.tipo_deuda) throw new Error("Clasifica la deuda como por pagar o por cobrar antes de guardarla.");
+    if (!["SI", "NO"].includes(value.confirmacion_principal)) throw new Error("Indica si el importe original corresponde solo al principal.");
+    if (value.monto_total <= 0) throw new Error("El saldo original debe ser mayor que cero.");
+    if (value.origen_saldo === "PRESTAMO_NUEVO") {
+      const account = state.data.cuentas.find((item) => item.id === value.cuenta_id);
+      if (!account || account.moneda !== value.moneda) throw new Error("Un préstamo nuevo requiere una cuenta asociada en la misma moneda.");
+      if (Number(value.monto_pagado || 0) !== 0) throw new Error("Registra el préstamo nuevo primero; luego anota pagos o cobros parciales.");
+      if (!value.fecha_operacion) throw new Error("Indica la fecha efectiva del préstamo.");
+    }
+    if (value.cuenta_id) {
+      const account = state.data.cuentas.find((item) => item.id === value.cuenta_id);
+      if (!account || account.moneda !== value.moneda) throw new Error("La cuenta asociada y la deuda deben usar la misma moneda.");
+    }
+  }
   if (entity === "metas" && value.monto_actual > value.monto_objetivo) throw new Error("El ahorro actual no puede superar la meta objetivo.");
   if (entity === "cuentas" && !value.propietario_id) throw new Error("Selecciona un titular.");
   if (entity === "presupuestos" && value.limite <= 0) throw new Error("El límite debe ser mayor que cero.");
@@ -1093,6 +1270,31 @@ async function saveForm(event) {
   button.textContent = "Guardando…";
   let uploaded = null;
   try {
+    if (entity === "debtSettlement") {
+      const formData = new FormData(event.currentTarget);
+      await saveDebtSettlement(state.user.uid, row.id, {
+        cuenta_id: formData.get("cuenta_id"), moneda: row.moneda,
+        fecha: formData.get("fecha"), principal: Number(formData.get("principal") || 0),
+        interes: Number(formData.get("interes") || 0), comision: Number(formData.get("comision") || 0),
+        descripcion: String(formData.get("descripcion") || "").trim(),
+      });
+      $("#record-dialog").close();
+      toast("Pago o cobro registrado en el historial contable.");
+      await loadReferenceData();
+      if (["flujo", "reportes"].includes(state.page)) await loadReports(false);
+      else await loadEntityPage(false);
+      return;
+    }
+    if (entity === "accountBaseline") {
+      const formData = new FormData(event.currentTarget);
+      const created = await establishAccountBaseline(state.user.uid, id, Number(formData.get("confirmedBalance")), formData.get("effectiveDate"));
+      $("#record-dialog").close();
+      toast(created ? "Línea base confirmada; no se alteró el saldo." : "Esta cuenta ya tiene una línea base inmutable.");
+      await loadReferenceData();
+      if (created) state.data.cuentas = (state.data.cuentas || []).map((account) => account.id === id ? { ...account, hasConfirmedBaseline: true } : account);
+      if (state.page === "cuentas") renderAccounts();
+      return;
+    }
     const value = readForm(entity, row);
     validateRecord(entity, value, row);
     if (entity === "cuentas") {
@@ -1118,12 +1320,12 @@ async function saveForm(event) {
       if (value.comprobanteFile) uploaded = await uploadReceipt(state.user.uid, movementId, value.comprobanteFile);
       if (uploaded) value.attachment = uploaded;
       delete value.comprobanteFile;
-      await saveMovement(state.user.uid, value, movementId, row);
-      if (uploaded && row?.attachment?.path && row.attachment.path !== uploaded.path) await deleteReceipt(row.attachment.path).catch(() => {});
-      if (row?.attachment?.path && value.attachment === null) await deleteReceipt(row.attachment.path).catch(() => {});
+      await saveMovement(state.user.uid, value, movementId);
     } else if (["transferencias", "pagosTarjeta"].includes(entity)) {
       const docId = id || newId();
-      await saveLedgerEntry(state.user.uid, entity, value, docId, row);
+      await saveLedgerEntry(state.user.uid, entity, value, docId);
+    } else if (entity === "deudas") {
+      await saveDebt(state.user.uid, value, id);
     } else {
       await saveDocument(state.user.uid, entity, value, id);
     }
@@ -1146,6 +1348,10 @@ function formDataChecked(name) { return Boolean($("#record-form [name='" + name 
 
 async function contentClick(event) {
   const add = event.target.closest("[data-new]");
+  const settleDebt = event.target.closest("[data-settle-debt]");
+  if (settleDebt) return openDebtSettlement((state.data.deudas || []).find((item) => item.id === settleDebt.dataset.settleDebt));
+  const establishBaseline = event.target.closest("[data-account-baseline]");
+  if (establishBaseline) return openAccountBaseline((state.data.cuentas || []).find((item) => item.id === establishBaseline.dataset.accountBaseline));
   const edit = event.target.closest("[data-edit]");
   const remove = event.target.closest("[data-delete]");
   if (add) return openForm(add.dataset.new, null, add.dataset.type ? { tipo: add.dataset.type } : {});
@@ -1173,6 +1379,7 @@ async function contentClick(event) {
   }
   if (event.target.closest("[data-clear-filter]")) {
     state.filter = {};
+    state.movementAccountFilter = null;
     state.data[state.page] = [];
     state.entityCursor = null;
     await loadEntityPage(false);
@@ -1182,14 +1389,14 @@ async function contentClick(event) {
 
 async function deleteRow(entity, id) {
   const row = (state.data[entity] || []).find((item) => item.id === id);
-  if (!row || !confirm("¿Eliminar este registro? Esta acción no se puede deshacer.")) return;
+  const financialLedger = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
+  const archiveEntity = ["cuentas", "deudas", "tarjetas"].includes(entity);
+  if (!row || !confirm(financialLedger ? "¿Anular esta operación? Se conservará y se añadirá una reversión al historial." : archiveEntity ? "¿Archivar este registro? Se conservarán sus datos y su historial." : "¿Eliminar este registro? Esta acción no se puede deshacer.")) return;
   try {
-    let receiptCleanupFailed = false;
     if (["movimientos", "transferencias", "pagosTarjeta"].includes(entity)) {
-      await deleteLedgerEntry(state.user.uid, entity, id, row);
-      if (entity === "movimientos" && row.attachment?.path) await deleteReceipt(row.attachment.path).catch(() => { receiptCleanupFailed = true; });
+      await deleteLedgerEntry(state.user.uid, entity, id);
     } else await removeDocument(state.user.uid, entity, id);
-    toast(receiptCleanupFailed ? "Movimiento eliminado; no se pudo borrar el archivo adjunto." : "Registro eliminado.");
+    toast(financialLedger ? "Operación anulada y reversión agregada al historial. El comprobante se conservó." : entity === "cuentas" ? "Cuenta archivada; se conservaron su saldo y el historial." : entity === "deudas" ? "Deuda archivada; se conservó su historial." : entity === "tarjetas" ? "Tarjeta archivada; se conservó su registro." : "Registro eliminado.");
     await loadReferenceData();
     await loadEntityPage(false);
   } catch (error) { toast(authError(error)); }
