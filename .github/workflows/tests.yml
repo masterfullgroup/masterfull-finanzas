@@ -49,6 +49,9 @@ jobs:
       - name: Pruebas de índices
         run: npm run test:indexes
 
+      - name: Aislamiento de filtros y reintentos de Firestore
+        run: npm run test:firestore-query
+
       - name: Pruebas de reglas con Firestore Emulator
         run: npm run test:rules
 

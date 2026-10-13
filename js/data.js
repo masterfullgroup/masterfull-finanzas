@@ -1,4 +1,5 @@
 import { firebaseStorageAvailable, getFirebaseServices } from "./firebase.js";
+import { firestoreQueryContext, retryFirestoreRead } from "./firestore-query.js";
 import { creditCardDebtDelta, currencyDigits, fromMinorUnits, movementDelta, resolveMovementAccountId, toMinorUnits, validatePaymentAmount, debtPrincipalChange, debtCostEffect, validateDebtPrincipalPayment, confirmedOutstandingPrincipal } from "./finance.js";
 
 const MONEY_FIELDS = {
@@ -110,7 +111,16 @@ function addFilters(fs, ref, filters = {}) {
 export async function listPage(uid, name, options = {}) {
   const { firestoreSdk: fs } = await getFirebaseServices();
   const ref = await collectionRef(uid, name);
-  const snapshot = await fs.getDocs(addFilters(fs, ref, options));
+  const query = addFilters(fs, ref, options);
+  let snapshot;
+  try {
+    snapshot = await retryFirestoreRead(() => fs.getDocs(query));
+  } catch (error) {
+    const context = firestoreQueryContext(name, options, error);
+    try { error.firestoreQueryContext = context; } catch { /* Preserve the original Firebase error. */ }
+    console.error("Firestore query failed", context);
+    throw error;
+  }
   return {
     rows: snapshot.docs.map((doc) => decode(name, doc.id, doc.data())),
     cursor: snapshot.docs.at(-1) || null,
