@@ -8,6 +8,7 @@ import {
   monthTotals, openReceipt, removeDocument, saveDebt, saveDebtSettlement, saveDocument, saveLedgerEntry,
   saveMovement, updateUserProfile, uploadReceipt,
 } from "./js/data.js";
+import { buildEntityPageOptions } from "./js/firestore-query.js";
 
 const PAGE_SIZE = 50;
 const REFERENCE_LIMIT = 100;
@@ -740,7 +741,7 @@ async function loadEntityPage(append) {
   if (!FIELDS[entity]) return;
   if (!append) pageLoading();
   try {
-    const options = { limit: PAGE_SIZE, cursor: append ? state.entityCursor : null, orderField: entity === "movimientos" || entity === "transferencias" || entity === "pagosTarjeta" ? "fecha" : "createdAt", direction: "desc", equals: { ...(state.filter.equals || {}), ...(entity === "movimientos" && state.movementAccountFilter ? { cuenta_id: state.movementAccountFilter } : {}) }, startDate: state.filter.startDate, endDate: state.filter.endDate };
+    const options = buildEntityPageOptions({ entity, state, append, pageSize: PAGE_SIZE });
     const result = await listPage(state.user.uid, entity, options);
     const old = append ? (state.data[entity] || []) : [];
     state.data[entity] = [...old, ...result.rows];
@@ -805,12 +806,16 @@ function renderAccounts() {
 
 function showDataError(error) {
   console.error(error);
-  const needsIndex = error?.code === "failed-precondition";
+  const code = String(error?.code || "").split("/").at(-1);
+  const needsIndex = code === "failed-precondition";
   const indexUrl = needsIndex ? error?.message?.match(/https:\/\/console\.firebase\.google\.com\/\S+/)?.[0]?.replace(/[),.;]+$/, "") : null;
-  const message = error?.code === "permission-denied" ? "Firestore bloqueó la solicitud. Revisa que firestore.rules esté publicado." : needsIndex ? "Firestore devolvió una condición previa fallida. Revisa el índice requerido y espera a que cualquier índice nuevo termine de crearse." : authError(error);
-  const diagnostic = needsIndex ? indexUrl
-    ? `<p><a class="link-button" href="${esc(indexUrl)}" target="_blank" rel="noopener noreferrer">Abrir índice requerido en Firebase Console</a></p>`
-    : `<details><summary>Detalle técnico</summary><code>${esc(error?.message || "Sin detalle proporcionado")}</code></details>` : "";
+  const message = code === "permission-denied" ? "Firestore bloqueó la solicitud. Revisa que firestore.rules esté publicado."
+    : needsIndex ? indexUrl ? "Firestore requiere un índice para esta consulta." : "Firestore no pudo completar esta consulta (failed-precondition). No se reintentó; revisa sus detalles técnicos."
+      : authError(error);
+  const queryContext = error?.firestoreQueryContext;
+  const diagnostic = queryContext || needsIndex
+    ? `<details><summary>Detalle técnico</summary>${queryContext ? `<pre>${esc(JSON.stringify(queryContext, null, 2))}</pre>` : ""}${indexUrl ? `<p><a class="link-button" href="${esc(indexUrl)}" target="_blank" rel="noopener noreferrer">Abrir índice requerido en Firebase Console</a></p>` : ""}<code>${esc(error?.message || "Sin detalle proporcionado")}</code></details>`
+    : "";
   $("#content").innerHTML = `<section class="panel"><p class="empty">${esc(message)}</p>${diagnostic}</section>`;
 }
 
