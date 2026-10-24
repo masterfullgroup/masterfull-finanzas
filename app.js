@@ -45,7 +45,7 @@ const OPTIONS = {
   tipoPropietario: ["PERSONA", "EMPRESA", "COMPARTIDA"],
   tipoInstitucion: ["BANCO", "CAJA", "FINANCIERA", "BILLETERA_DIGITAL", "COOPERATIVA", "OTRA"],
   pais: ["PE", "OTRO"],
-  tipoCuenta: ["EFECTIVO", "BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "AHORRO", "BILLETERA_DIGITAL", "INVERSION", "PRESTAMO", "CREDITO", "CAJA", "OTRO"],
+  tipoCuenta: ["EFECTIVO", "BANCO", "YAPE", "PLIN", "AHORRO", "BILLETERA_DIGITAL", "INVERSION", "PRESTAMO", "CREDITO", "CAJA", "OTRO"],
   moneda: ["PEN", "USD", "EUR", "GBP", "JPY", "CLP", "COP", "MXN", "BRL"],
   tipoMovimiento: ["INGRESO", "GASTO"],
   medioPago: ["EFECTIVO", "CUENTA_BANCARIA", "YAPE", "PLIN", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"],
@@ -743,8 +743,11 @@ async function loadEntityPage(append) {
   try {
     const options = buildEntityPageOptions({ entity, state, append, pageSize: PAGE_SIZE });
     const result = await listPage(state.user.uid, entity, options);
-    const old = append ? (state.data[entity] || []) : [];
-    state.data[entity] = [...old, ...result.rows];
+    const old = append || entity === "instituciones" ? (state.data[entity] || []) : [];
+    if (entity === "instituciones") {
+      const customRows = [...new Map([...old, ...result.rows].filter((row) => !row.base).map((row) => [row.id, row])).values()];
+      state.data.instituciones = [...BASE_INSTITUTIONS, ...customRows];
+    } else state.data[entity] = [...old, ...result.rows];
     if (entity === "cuentas" && !append) {
       const baselinePage = await listPage(state.user.uid, "eventosContables", { limit: 500, orderField: "fechaEfectiva", direction: "desc", equals: { eventoTipo: "SALDO_BASE" } });
       const accountIds = new Set(baselinePage.rows.map((event) => event.cuentaId));
@@ -1058,14 +1061,18 @@ function optionLabel(value = "") {
   return labels[value] || String(value).toLowerCase().replaceAll("_", " ");
 }
 
-function getOptions(key, field) {
+function getOptions(key, field, currentValue = "") {
+  if (key === "tipoCuenta") {
+    const legacyCardTypes = ["TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO"];
+    return field === "cuentas" && legacyCardTypes.includes(currentValue) ? [...OPTIONS.tipoCuenta, currentValue] : OPTIONS.tipoCuenta;
+  }
   if (OPTIONS[key]) return OPTIONS[key];
   if (key === "estadoCuenta") return ["ACTIVA", "INACTIVA", "ARCHIVADA"];
   if (key === "cuentas") return (state.data.cuentas || []).filter((row) => row.estado !== "ARCHIVADA");
   if (key === "tarjetas") return (state.data.tarjetas || []).filter((row) => !row.archivada);
   if (key === "personas") return state.data.personas || [];
   if (key === "propietarios") return (state.data.propietarios || []).filter((row) => row.estado !== "INACTIVO");
-  if (key === "instituciones") return state.data.instituciones || BASE_INSTITUTIONS;
+  if (key === "instituciones") return state.data.instituciones?.length ? state.data.instituciones : BASE_INSTITUTIONS;
   if (key === "categorias") return (state.data.categorias || []).filter((row) => field !== "presupuestos" || row.tipo === "GASTO");
   return [];
 }
@@ -1073,7 +1080,7 @@ function getOptions(key, field) {
 function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
   const optionalAttr = optional ? "" : "required";
   if (type === "select") {
-    const options = getOptions(optionKey, entity);
+    const options = getOptions(optionKey, entity, value);
     return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}><option value="">Selecciona</option>${options.map((item) => {
       const key = typeof item === "string" ? item : item.id;
       const title = typeof item === "string" ? optionLabel(item) : `${item.nombre}${item.tipo ? ` · ${optionLabel(item.tipo)}` : ""}`;
@@ -1169,9 +1176,9 @@ function updateFormFlow(target) {
     guidance.textContent = debit ? "Vincula la cuenta cuyo saldo se descontará al usar esta tarjeta." : "Registra límite, saldo utilizado y ciclo de pago de la tarjeta.";
   } else if (entity === "cuentas") {
     const type = form.elements.tipo?.value || "";
-    const requiresInstitution = ["BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "BILLETERA_DIGITAL"].includes(type);
+    const requiresInstitution = ["BANCO", "AHORRO", "YAPE", "PLIN", "BILLETERA_DIGITAL", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO"].includes(type);
     hide("institucion_id", !requiresInstitution);
-    guidance.textContent = type ? `${optionLabel(type)} se organizará como ${ACCOUNT_NATURE[type] || "ACTIVO"}.` : "Asigna un titular y selecciona el tipo de cuenta.";
+    guidance.textContent = type ? `${optionLabel(type)} se organizará como ${ACCOUNT_NATURE[type] || "ACTIVO"}. Registra las tarjetas por separado en Tarjetas.` : "Asigna un titular y selecciona el tipo de cuenta. Las tarjetas se registran por separado.";
   } else if (entity === "deudas") {
     if (target?.name === "origen_saldo" && form.elements.origen_saldo.value === "PRESTAMO_NUEVO") form.elements.confirmacion_principal.value = "SI";
     guidance.textContent = form.elements.origen_saldo.value === "PRESTAMO_NUEVO"
@@ -1308,7 +1315,7 @@ async function saveForm(event) {
       value.saldo_inicial = Math.max(0, value.saldo_inicial);
       value.moneda ||= "PEN";
       if (!id) value.saldo_actual = value.saldo_inicial;
-      if (!FIELDS.cuentas.some(([name]) => name === "institucion_id") || !["BANCO", "YAPE", "PLIN", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO", "BILLETERA_DIGITAL"].includes(value.tipo)) value.institucion_id = null;
+      if (!FIELDS.cuentas.some(([name]) => name === "institucion_id") || !["BANCO", "AHORRO", "YAPE", "PLIN", "BILLETERA_DIGITAL", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO"].includes(value.tipo)) value.institucion_id = null;
     }
     if (entity === "tarjetas") {
       if (value.tipo === "DEBITO") {
