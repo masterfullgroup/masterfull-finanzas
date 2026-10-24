@@ -350,7 +350,7 @@ export async function removeDocument(uid, name, id) {
   const references = {
     cuentas: [["movimientos", "cuenta_id"], ["transferencias", "cuenta_origen_id"], ["transferencias", "cuenta_destino_id"], ["pagosTarjeta", "cuenta_id"], ["tarjetas", "cuenta_id"]],
     tarjetas: [["movimientos", "tarjeta_id"], ["pagosTarjeta", "tarjeta_id"], ["recurrentes", "tarjeta_id"]],
-    propietarios: [["cuentas", "propietario_id"]],
+    propietarios: [["cuentas", "propietario_id"], ["tarjetas", "propietario_id"]],
     instituciones: [["cuentas", "institucion_id"]],
     categorias: [["movimientos", "categoria_id"], ["presupuestos", "categoria_id"], ["recurrentes", "categoria_id"]],
     deudas: [["eventosContables", "deudaId"], ["movimientos", "deuda_id"]],

@@ -61,7 +61,7 @@ const FIELDS = {
   propietarios: [["nombre", "Nombre del titular", "text"], ["tipo", "Tipo de titular", "select", "tipoPropietario"]],
   instituciones: [["nombre", "Nombre", "text"], ["tipo", "Tipo de institución", "select", "tipoInstitucion"], ["pais", "País", "select", "pais"]],
   cuentas: [["propietario_id", "Titular", "relation", "propietarios"], ["nombre", "Alias de la cuenta", "text"], ["tipo", "Tipo de cuenta", "select", "tipoCuenta"], ["institucion_id", "Institución", "relation", "instituciones", true], ["saldo_inicial", "Saldo inicial", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_saldo_inicial", "Fecha del saldo inicial", "date"], ["estado", "Estado", "select", "estadoCuenta", true]],
-  tarjetas: [["tipo", "Tipo de tarjeta", "select", "tipoTarjeta"], ["nombre", "Nombre", "text"], ["entidad", "Entidad emisora", "select", "entidadTarjeta"], ["cuenta_id", "Cuenta vinculada (débito)", "relation", "cuentas", true], ["moneda", "Moneda", "select", "moneda"], ["linea_credito", "Línea de crédito", "money", null, true], ["saldo_inicial_usado", "Deuda inicial utilizada", "money", null, true], ["dia_cierre", "Fecha de facturación", "number", null, true], ["dia_pago", "Último día de pago", "number", null, true], ["tasa_interes_anual", "Interés anual (%)", "number", null, true]],
+  tarjetas: [["propietario_id", "Titular", "relation", "propietarios"], ["tipo", "Tipo de tarjeta", "select", "tipoTarjeta"], ["nombre", "Nombre de la tarjeta", "text"], ["entidad", "Entidad emisora", "select", "entidadTarjeta"], ["cuenta_id", "Cuenta vinculada (débito)", "relation", "cuentas", true], ["moneda", "Moneda", "select", "moneda"], ["linea_credito", "Línea de crédito", "money", null, true], ["saldo_inicial_usado", "Deuda inicial utilizada", "money", null, true], ["dia_cierre", "Fecha de facturación", "number", null, true], ["dia_pago", "Último día de pago", "number", null, true], ["tasa_interes_anual", "Interés anual (%)", "number", null, true]],
   categorias: [["nombre", "Nombre", "text"], ["tipo", "Tipo", "select", "tipoMovimiento"], ["color", "Color", "color", null, true]],
   movimientos: [["tipo", "Tipo", "select", "tipoMovimiento"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["categoria_id", "Categoría", "relation", "categorias"], ["medio_pago", "Forma de pago", "select", "medioPago"], ["cuenta_id", "Cuenta", "relation", "cuentas", true], ["tarjeta_id", "Tarjeta", "relation", "tarjetas", true], ["numero_cuotas", "Número de cuotas", "number", null, true], ["persona_id", "Persona", "relation", "personas", true], ["descripcion", "Descripción", "text", null, true], ["notas", "Notas", "textarea", null, true]],
   transferencias: [["cuenta_origen_id", "Cuenta de origen", "relation", "cuentas"], ["cuenta_destino_id", "Cuenta de destino", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
@@ -75,7 +75,7 @@ const FIELDS = {
 const LIST_FIELDS = {
   personas: ["nombre", "relacion", "email", "telefono"], propietarios: ["nombre", "tipo"],
   instituciones: ["nombre", "tipo", "pais"], cuentas: ["nombre", "propietario_id", "tipo", "institucion_id", "saldo_actual", "moneda"],
-  tarjetas: ["nombre", "tipo", "entidad", "utilizado", "linea_credito", "moneda"], categorias: ["nombre", "tipo"],
+  tarjetas: ["nombre", "propietario_id", "tipo", "entidad", "utilizado", "linea_credito", "moneda"], categorias: ["nombre", "tipo"],
   movimientos: ["fecha", "tipo", "categoria_id", "origen_movimiento", "medio_pago", "monto", "moneda", "comprobante"],
   transferencias: ["fecha", "cuenta_origen_id", "cuenta_destino_id", "monto", "moneda"],
   pagosTarjeta: ["fecha", "tarjeta_id", "cuenta_id", "monto", "moneda"],
@@ -1117,6 +1117,9 @@ function openForm(entity, row = null, preset = {}) {
   const fields = FIELDS[entity].map(([name, label, type, options, optional]) => {
     let value = row?.[name] ?? preset[name] ?? defaults[name] ?? "";
     if (name === "institucion_id" && row?.institucion_id?.startsWith("base-")) value = row.institucion_id;
+    if (entity === "tarjetas" && name === "propietario_id" && !value && row?.cuenta_id) {
+      value = state.data.cuentas.find((account) => account.id === row.cuenta_id)?.propietario_id || "";
+    }
     return formFieldHTML(name, label, type, options, optional, value, entity);
   }).join("");
   const attachment = entity === "movimientos" ? firebaseStorageAvailable ? `<label class="wide">Comprobante (imagen o PDF, máximo 10 MB)<input id="receipt-file" name="comprobanteFile" type="file" accept="image/*,application/pdf"><small>${row?.attachment?.name ? `Actual: ${esc(row.attachment.name)}. Al elegir otro se reemplazará.` : "El archivo será privado y accesible solo desde tu cuenta."}</small></label>${row?.attachment?.path ? `<label class="wide"><span><input name="removeAttachment" type="checkbox" value="1"> Quitar comprobante actual</span></label>` : ""}` : `<p class="field-help wide">Comprobantes temporalmente no disponibles: Firebase Storage aún no está habilitado. Puedes guardar el movimiento sin adjunto.</p>` : "";
@@ -1171,9 +1174,33 @@ function updateFormFlow(target) {
     guidance.textContent = credit ? "La compra aumenta la deuda de la tarjeta; registra el pago como una operación aparte." : debit ? "El gasto se descuenta de la cuenta vinculada a la tarjeta de débito." : "Selecciona la cuenta desde donde sale o ingresa el dinero.";
   } else if (entity === "tarjetas") {
     const debit = form.elements.tipo?.value === "DEBITO";
+    const ownerId = form.elements.propietario_id?.value || "";
+    const accountSelect = form.elements.cuenta_id;
+    const ownerChanged = target?.name === "propietario_id";
+    const previousAccountId = ownerChanged ? "" : accountSelect.value;
+    const matchingAccounts = ownerId
+      ? getOptions("cuentas", entity).filter((account) => account.propietario_id === ownerId)
+      : [];
+    const selectedAccount = matchingAccounts.find((account) => account.id === previousAccountId)
+      || (matchingAccounts.length === 1 ? matchingAccounts[0] : null);
+    const ownerLabel = form.elements.propietario_id?.selectedOptions?.[0]?.textContent?.split(" · ")[0] || "";
+    const cardName = form.elements.nombre;
+    const previousOwnerLabel = form.elements.propietario_id.dataset.lastName || "";
+    if (ownerChanged && cardName && (!cardName.value.trim() || cardName.value === previousOwnerLabel)) cardName.value = ownerLabel;
+    form.elements.propietario_id.dataset.lastName = ownerLabel;
+    accountSelect.innerHTML = `<option value="">${ownerId ? matchingAccounts.length ? "Selecciona una cuenta" : "No hay cuentas para este titular" : "Primero selecciona un titular"}</option>${matchingAccounts.map((account) => {
+      const institution = account.institucion_id ? ` · ${relationLabel("institucion_id", account.institucion_id)}` : "";
+      return `<option value="${esc(account.id)}" ${account.id === selectedAccount?.id ? "selected" : ""}>${esc(account.nombre)} · ${esc(optionLabel(account.tipo))}${esc(institution)}</option>`;
+    }).join("")}`;
+    accountSelect.value = selectedAccount?.id || "";
+    accountSelect.disabled = !ownerId;
+    accountSelect.required = debit;
+    if (selectedAccount && form.elements.moneda) form.elements.moneda.value = selectedAccount.moneda || form.elements.moneda.value;
     hide("cuenta_id", !debit);
     ["linea_credito", "saldo_inicial_usado", "dia_cierre", "dia_pago", "tasa_interes_anual"].forEach((field) => hide(field, debit));
-    guidance.textContent = debit ? "Vincula la cuenta cuyo saldo se descontará al usar esta tarjeta." : "Registra límite, saldo utilizado y ciclo de pago de la tarjeta.";
+    guidance.textContent = debit
+      ? matchingAccounts.length ? "Las cuentas de débito se filtran por titular. El gasto se descontará de la cuenta vinculada." : "Selecciona un titular con una cuenta registrada para poder vincular la tarjeta de débito."
+      : "Elige al titular de la tarjeta. Para crédito no hace falta vincular una cuenta; registrarás el pago cuando corresponda.";
   } else if (entity === "cuentas") {
     const type = form.elements.tipo?.value || "";
     const requiresInstitution = ["BANCO", "AHORRO", "YAPE", "PLIN", "BILLETERA_DIGITAL", "TARJETA_DE_DEBITO", "TARJETA_DE_CREDITO"].includes(type);
@@ -1270,6 +1297,16 @@ function validateRecord(entity, value, row) {
   }
   if (entity === "metas" && value.monto_actual > value.monto_objetivo) throw new Error("El ahorro actual no puede superar la meta objetivo.");
   if (entity === "cuentas" && !value.propietario_id) throw new Error("Selecciona un titular.");
+  if (entity === "tarjetas") {
+    const owner = state.data.propietarios.find((item) => item.id === value.propietario_id);
+    if (!owner) throw new Error("Selecciona un titular registrado para la tarjeta.");
+    if (value.tipo === "DEBITO") {
+      const account = state.data.cuentas.find((item) => item.id === value.cuenta_id);
+      if (!account) throw new Error("Selecciona una cuenta de este titular para vincular la tarjeta de débito.");
+      if (account.propietario_id !== value.propietario_id) throw new Error("La cuenta seleccionada no pertenece al titular de la tarjeta.");
+      if (account.moneda !== value.moneda) throw new Error("La tarjeta y su cuenta vinculada deben usar la misma moneda.");
+    }
+  }
   if (entity === "presupuestos" && value.limite <= 0) throw new Error("El límite debe ser mayor que cero.");
 }
 
