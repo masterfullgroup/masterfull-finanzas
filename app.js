@@ -13,6 +13,7 @@ import { buildEntityPageOptions } from "./js/firestore-query.js";
 const PAGE_SIZE = 50;
 const REFERENCE_LIMIT = 100;
 const REPORT_LIMIT = 500;
+const CATEGORY_COLORS = ["#0B8068", "#2563EB", "#7C3AED", "#C2417A", "#C2410C", "#A16207", "#4D7C0F", "#475569", "#0891B2", "#DC2626"];
 const NAV = [
   ["PRINCIPAL"], ["resumen", "home", "Dashboard"],
   ["movimientos", "income", "Ingresos", "INGRESO"], ["movimientos", "expense", "Gastos", "GASTO"],
@@ -62,7 +63,7 @@ const FIELDS = {
   instituciones: [["nombre", "Nombre", "text"], ["tipo", "Tipo de institución", "select", "tipoInstitucion"], ["pais", "País", "select", "pais"]],
   cuentas: [["propietario_id", "Titular", "relation", "propietarios"], ["nombre", "Alias de la cuenta", "text"], ["tipo", "Tipo de cuenta", "select", "tipoCuenta"], ["institucion_id", "Institución", "relation", "instituciones", true], ["saldo_inicial", "Saldo inicial", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha_saldo_inicial", "Fecha del saldo inicial", "date"], ["estado", "Estado", "select", "estadoCuenta", true]],
   tarjetas: [["propietario_id", "Titular", "relation", "propietarios"], ["tipo", "Tipo de tarjeta", "select", "tipoTarjeta"], ["nombre", "Nombre de la tarjeta", "text"], ["entidad", "Entidad emisora", "select", "entidadTarjeta"], ["cuenta_id", "Cuenta vinculada (débito)", "relation", "cuentas", true], ["moneda", "Moneda", "select", "moneda"], ["linea_credito", "Línea de crédito", "money", null, true], ["saldo_inicial_usado", "Deuda inicial utilizada", "money", null, true], ["dia_cierre", "Fecha de facturación", "number", null, true], ["dia_pago", "Último día de pago", "number", null, true], ["tasa_interes_anual", "Interés anual (%)", "number", null, true]],
-  categorias: [["nombre", "Nombre", "text"], ["tipo", "Tipo", "select", "tipoMovimiento"], ["color", "Color", "color", null, true]],
+  categorias: [["nombre", "Nombre", "text"], ["tipo", "Tipo", "select", "tipoMovimiento"], ["color", "Color", "categoryColor"]],
   movimientos: [["tipo", "Tipo", "select", "tipoMovimiento"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["categoria_id", "Categoría", "relation", "categorias"], ["medio_pago", "Forma de pago", "select", "medioPago"], ["cuenta_id", "Cuenta", "relation", "cuentas", true], ["tarjeta_id", "Tarjeta", "relation", "tarjetas", true], ["numero_cuotas", "Número de cuotas", "number", null, true], ["persona_id", "Persona", "relation", "personas", true], ["descripcion", "Descripción", "text", null, true], ["notas", "Notas", "textarea", null, true]],
   transferencias: [["cuenta_origen_id", "Cuenta de origen", "relation", "cuentas"], ["cuenta_destino_id", "Cuenta de destino", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
   pagosTarjeta: [["tarjeta_id", "Tarjeta de crédito", "relation", "tarjetas"], ["cuenta_id", "Cuenta de pago", "relation", "cuentas"], ["monto", "Monto", "money"], ["moneda", "Moneda", "select", "moneda"], ["fecha", "Fecha", "date"], ["descripcion", "Descripción", "text", null, true]],
@@ -616,22 +617,21 @@ function financialChartSvg(history, currency) {
   return `<svg class="financial-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ingresos, gastos y balance acumulado del periodo en ${esc(currency)}"><title>Evolución de ingresos, gastos y balance acumulado</title><desc>Comparación mensual de ingresos y gastos. El balance acumulado suma ingresos menos gastos desde el primer mes visible; no es el saldo bancario.</desc>${grid}<line x1="${margin.left}" y1="${zeroY}" x2="${width - margin.right}" y2="${zeroY}" class="chart-zero-line"/><g>${bars}</g><path d="${line}" class="chart-net-line"/>${circles}</svg>`;
 }
 
-function donutMarkup(categories, categoryName, currency, sampled) {
-  const palette = ["#10B981", "#081827", "#F59E0B", "#EF4444", "#059669", "#486581"];
+function donutMarkup(categories, categoryName, categoryColor, currency, sampled) {
   const ranked = categories.sort((a, b) => b[1] - a[1]);
-  const visible = ranked.slice(0, 4).map(([id, amount]) => [categoryName(id), amount]);
+  const visible = ranked.slice(0, 4).map(([id, amount]) => ({ name: categoryName(id), amount, color: categoryColor(id) }));
   const others = ranked.slice(4).reduce((sum, [, amount]) => sum + amount, 0);
-  if (others > 0) visible.push(["Otras categorías", others]);
-  const total = visible.reduce((sum, [, amount]) => sum + amount, 0);
+  if (others > 0) visible.push({ name: "Otras categorías", amount: others, color: "#64748B" });
+  const total = visible.reduce((sum, item) => sum + item.amount, 0);
   if (!total) return `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-chart"></use></svg></span><strong>Aún no hay gastos para analizar</strong><p>Los gastos que registres aparecerán aquí.</p></div>`;
   let offset = 0;
-  const stops = visible.map(([, amount], index) => {
+  const stops = visible.map(({ amount, color }) => {
     const portion = amount / total * 100;
-    const stop = `${palette[index % palette.length]} ${offset.toFixed(2)}% ${(offset + portion).toFixed(2)}%`;
+    const stop = `${color} ${offset.toFixed(2)}% ${(offset + portion).toFixed(2)}%`;
     offset += portion;
     return stop;
   }).join(",");
-  const legend = visible.map(([name, amount], index) => `<li><span class="donut-label"><i style="--legend-color:${palette[index % palette.length]}"></i>${esc(name)}</span><strong>${Math.round(amount / total * 100)}%</strong></li>`).join("");
+  const legend = visible.map(({ name, amount, color }) => `<li><span class="donut-label"><i style="--legend-color:${color}"></i>${esc(name)}</span><strong>${Math.round(amount / total * 100)}%</strong></li>`).join("");
   return `<div class="donut-content"><div class="donut-chart" style="--donut-stops:conic-gradient(${stops})" role="img" aria-label="Distribución de gastos registrados: ${esc(moneyFromMinor(total, currency))}"><div class="donut-center"><strong>${esc(moneyFromMinor(total, currency))}</strong><span>${sampled ? "Muestra" : "Total del periodo"}</span></div></div><ul class="donut-legend">${legend}</ul></div>${sampled ? `<p class="sample-note">Distribución calculada con los 100 movimientos más recientes del periodo.</p>` : ""}`;
 }
 
@@ -681,7 +681,9 @@ async function renderDashboard() {
       ...budget,
       spentMinor: await categoryExpenseTotal(state.user.uid, budget.categoria_id, start, end, currency),
     })));
-    const categoryName = (id) => state.data.categorias.find((item) => item.id === id)?.nombre || (id === "sin-categoria" ? "Sin categoría" : "Categoría" );
+    const categoryById = (id) => state.data.categorias.find((item) => item.id === id);
+    const categoryName = (id) => categoryById(id)?.nombre || (id === "sin-categoria" ? "Sin categoría" : "Categoría" );
+    const categoryColor = (id) => CATEGORY_COLORS.includes(categoryById(id)?.color) ? categoryById(id).color : CATEGORY_COLORS[0];
     const monthTitle = new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric", timeZone: APP_TIME_ZONE }).format(new Date(`${selectedMonth}-01T12:00:00`));
     state.data.movimientos = recent.rows;
 
@@ -724,7 +726,7 @@ async function renderDashboard() {
           <section class="panel dashboard-panel recent-panel"><header class="dashboard-panel-head"><div><h2>Movimientos recientes</h2><p class="caption">${esc(monthTitle)} · últimos registros</p></div><a class="link-button" href="#movimientos">Ver todos <span aria-hidden="true">→</span></a></header>${recentRows ? `<div class="table-scroll"><table class="dashboard-table"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>${recentRows}</tbody></table></div>${recent.hasMore ? `<p class="table-note">Se muestran los cinco más recientes. El resumen mensual usa agregados completos.</p>` : ""}` : `<div class="dashboard-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-transfer"></use></svg></span><strong>Aún no hay movimientos en ${esc(monthTitle)}</strong><p>Los ingresos y gastos que registres aparecerán aquí.</p><button type="button" class="btn primary" data-new="movimientos" data-type="INGRESO">Registrar ingreso</button></div>`}</section>
         </div>
         <aside class="dashboard-side-column">
-          <section class="panel dashboard-panel distribution-panel"><header class="dashboard-panel-head"><div><h2>Distribución de gastos</h2><p class="caption">${esc(monthTitle)}</p></div></header>${donutMarkup(topCategories, categoryName, currency, recent.hasMore)}</section>
+          <section class="panel dashboard-panel distribution-panel"><header class="dashboard-panel-head"><div><h2>Distribución de gastos</h2><p class="caption">${esc(monthTitle)}</p></div></header>${donutMarkup(topCategories, categoryName, categoryColor, currency, recent.hasMore)}</section>
           <section class="panel dashboard-panel accounts-panel"><header class="dashboard-panel-head"><div><h2>Mis cuentas</h2><p class="caption">Saldos en ${esc(currency)}</p></div><a class="link-button" href="#cuentas">Ver todas</a></header>${accountRows || `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-wallet"></use></svg></span><strong>Aún no tienes cuentas</strong><p>Agrega una cuenta para consultar tu saldo.</p><a class="link-button" href="#cuentas">Ir a cuentas</a></div>`}</section>
           <section class="panel dashboard-panel cards-panel"><header class="dashboard-panel-head"><div><h2>Mis tarjetas</h2><p class="caption">Información protegida</p></div><a class="link-button" href="#tarjetas">Ver todas</a></header>${cards || `<div class="dashboard-empty compact-empty"><span class="empty-mark"><svg aria-hidden="true"><use href="#i-card"></use></svg></span><strong>Aún no tienes tarjetas</strong><p>Las tarjetas que registres aparecerán aquí.</p></div>`}</section>
         </aside>
@@ -836,7 +838,16 @@ function relationLabel(field, id) {
 function cellValue(entity, key, row) {
   const value = row[key];
   if (key === "comprobante") return row.attachment?.path ? firebaseStorageAvailable ? `<button class="link-button" data-open-receipt="${esc(row.attachment.path)}">${esc(row.attachment.name || "Abrir")}</button>` : `<span class="caption">No disponible (Storage desactivado)</span>` : "—";
-  if (["categoria_id", "cuenta_id", "tarjeta_id", "persona_id", "propietario_id", "institucion_id", "cuenta_origen_id", "cuenta_destino_id"].includes(key)) return esc(relationLabel(key, value));
+  if (entity === "categorias" && key === "nombre") {
+    const color = CATEGORY_COLORS.includes(row.color) ? row.color : CATEGORY_COLORS[0];
+    return `<span class="category-name"><i style="--category-color:${color}" aria-hidden="true"></i>${esc(value || "—")}</span>`;
+  }
+  if (key === "categoria_id") {
+    const category = state.data.categorias.find((item) => item.id === value);
+    const color = CATEGORY_COLORS.includes(category?.color) ? category.color : CATEGORY_COLORS[0];
+    return `<span class="category-badge" style="--category-color:${color}"><i aria-hidden="true"></i>${esc(category?.nombre || (value === "sin-categoria" ? "Sin categoría" : "—"))}</span>`;
+  }
+  if (["cuenta_id", "tarjeta_id", "persona_id", "propietario_id", "institucion_id", "cuenta_origen_id", "cuenta_destino_id"].includes(key)) return esc(relationLabel(key, value));
   if (["monto", "limite", "saldo_actual", "linea_credito", "utilizado", "monto_objetivo", "monto_actual", "monto_total", "monto_pagado", "monto_estimado"].includes(key)) return `<strong>${esc(money(value, row.moneda || "PEN"))}</strong>`;
   if (key === "principal_confirmado") return `<span class="badge">${value === true ? "Principal confirmado" : "Principal pendiente de confirmar"}</span>`;
   if (["estado", "tipo", "medio_pago", "tipo_deuda", "origen_saldo"].includes(key)) return `<span class="badge ${esc(String(value || "").toLowerCase())}">${esc(optionLabel(value))}</span>`;
@@ -1079,6 +1090,11 @@ function getOptions(key, field, currentValue = "") {
 
 function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
   const optionalAttr = optional ? "" : "required";
+  if (type === "categoryColor") {
+    const selectedColor = CATEGORY_COLORS.includes(value) ? value : CATEGORY_COLORS[0];
+    const swatches = CATEGORY_COLORS.map((color, index) => `<label class="category-color-option"><input type="radio" name="${field}" value="${color}" aria-label="Color ${index + 1}" ${color === selectedColor ? "checked" : ""} required><span style="--swatch-color:${color}" aria-hidden="true"></span></label>`).join("");
+    return `<fieldset class="category-color-field wide"><legend>${esc(label)}</legend><div class="category-color-palette" role="radiogroup" aria-label="Elige el color de la categoría">${swatches}</div><small>El color se verá en la lista y el gráfico de gastos.</small></fieldset>`;
+  }
   if (type === "select") {
     const options = getOptions(optionKey, entity, value);
     return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}><option value="">Selecciona</option>${options.map((item) => {
@@ -1116,6 +1132,7 @@ function openForm(entity, row = null, preset = {}) {
   };
   const fields = FIELDS[entity].map(([name, label, type, options, optional]) => {
     let value = row?.[name] ?? preset[name] ?? defaults[name] ?? "";
+    if (entity === "categorias" && name === "color" && !value) value = CATEGORY_COLORS[0];
     if (name === "institucion_id" && row?.institucion_id?.startsWith("base-")) value = row.institucion_id;
     if (entity === "tarjetas" && name === "propietario_id" && !value && row?.cuenta_id) {
       value = state.data.cuentas.find((account) => account.id === row.cuenta_id)?.propietario_id || "";
