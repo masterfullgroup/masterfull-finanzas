@@ -7,7 +7,7 @@ import {
   categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, establishAccountBaseline, getProfile, listPage,
   monthTotals, openReceipt, removeDocument, saveDebt, saveDebtSettlement, saveDocument, saveLedgerEntry,
   saveMovement, updateUserProfile, uploadReceipt,
-} from "./js/data.js";
+} from "./js/data.js?v=transaction-query-fix-20261109";
 import { buildEntityPageOptions } from "./js/firestore-query.js";
 
 const PAGE_SIZE = 50;

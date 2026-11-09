@@ -143,17 +143,18 @@ export async function saveDocument(uid, name, value, id = value.id || null) {
   if (id && name === "cuentas" && data.saldoInicialMinor !== undefined) {
     const baselineRef = newAccountingEventRef(db, fs, uid);
     const baselineQuery = fs.query(accountingEventsRef(db, fs, uid), fs.where("cuentaId", "==", id), fs.where("eventoTipo", "==", "SALDO_BASE"), fs.limit(1));
+    const baselineSnapshot = await fs.getDocs(baselineQuery);
+    const baseline = baselineSnapshot.docs[0] || null;
     await runAccountingTransaction(db, fs, async (transaction) => {
-      const [snapshot, baselineSnapshot] = await Promise.all([transaction.get(docRef), transaction.get(baselineQuery)]);
+      const snapshot = await transaction.get(docRef);
       if (!snapshot.exists()) throw new Error("La cuenta ya no existe. Actualiza la pantalla.");
       const previous = snapshot.data();
       const stableData = { ...data };
-      if (!baselineSnapshot.empty) stableData.fecha_saldo_inicial = baselineSnapshot.docs[0].data().fechaEfectiva;
+      if (baseline) stableData.fecha_saldo_inicial = baseline.data().fechaEfectiva;
       const delta = data.saldoInicialMinor - Number(previous.saldoInicialMinor || 0);
-      if (delta && baselineSnapshot.empty) throw new Error("No se puede ajustar el saldo inicial sin una línea base confirmada.");
+      if (delta && !baseline) throw new Error("No se puede ajustar el saldo inicial sin una línea base confirmada.");
       transaction.update(docRef, { ...stableData, saldoActualMinor: Number(previous.saldoActualMinor ?? previous.saldoInicialMinor ?? 0) + delta, createdAt: previous.createdAt, updatedAt: fs.serverTimestamp() });
-      if (!baselineSnapshot.empty && delta) {
-        const baseline = baselineSnapshot.docs[0];
+      if (baseline && delta) {
         appendAccountingEvent(transaction, baselineRef, fs, cashMovementEvent({
           operationCollection: "cuentas", operationId: id, operationType: "AJUSTE", accountId: id,
           currency: previous.moneda || "PEN", effectiveDate: baseline.data().fechaEfectiva,
@@ -276,14 +277,16 @@ export async function establishAccountBaseline(uid, accountId, confirmedBalance,
   const eventsRef = accountingEventsRef(db, fs, uid);
   if (!effectiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) throw new Error("Indica una fecha de corte confirmada.");
   const query = fs.query(eventsRef, fs.where("cuentaId", "==", accountId), fs.where("eventoTipo", "==", "SALDO_BASE"), fs.limit(1));
+  const existingBaseline = await fs.getDocs(query);
+  if (!existingBaseline.empty) return false;
+  const baselineEventRef = fs.doc(eventsRef, `saldo-base-${accountId}`);
   let created = true;
   await runAccountingTransaction(db, fs, async (transaction) => {
-    const [accountSnapshot, existing] = await Promise.all([transaction.get(accountRef), transaction.get(query)]);
+    const [accountSnapshot, existing] = await Promise.all([transaction.get(accountRef), transaction.get(baselineEventRef)]);
     if (!accountSnapshot.exists()) throw new Error("La cuenta no existe.");
-    if (!existing.empty) { created = false; return; }
+    if (existing.exists()) { created = false; return; }
     const amountMinor = toMinorUnits(confirmedBalance, accountSnapshot.data().moneda || "PEN");
     if (amountMinor !== Number(accountSnapshot.data().saldoActualMinor ?? accountSnapshot.data().saldoInicialMinor ?? 0)) throw new Error("El saldo confirmado debe coincidir con el saldo actual guardado; no se alteró la cuenta.");
-    const baselineEventRef = newAccountingEventRef(db, fs, uid);
     appendAccountingEvent(transaction, baselineEventRef, fs, cashMovementEvent({
       operationCollection: "cuentas", operationId: accountId, operationType: "SALDO_BASE", accountId,
       currency: accountSnapshot.data().moneda || "PEN", effectiveDate, cashDeltaMinor: amountMinor, appliedCashDeltaMinor: 0, impact: "NINGUNO", snapshot: { saldoConfirmado: true },
@@ -355,15 +358,15 @@ export async function removeDocument(uid, name, id) {
     categorias: [["movimientos", "categoria_id"], ["presupuestos", "categoria_id"], ["recurrentes", "categoria_id"]],
     deudas: [["eventosContables", "deudaId"], ["movimientos", "deuda_id"]],
   }[name] || [];
+  const queries = await Promise.all(references.map(async ([collection, field]) => {
+    const ref = await collectionRef(uid, collection);
+    return fs.query(ref, fs.where(field, "==", id), fs.limit(1));
+  }));
+  const matches = await Promise.all(queries.map((query) => fs.getDocs(query)));
+  if (matches.some((result) => !result.empty)) throw new Error("No se puede eliminar: otros registros dependen de este elemento. Actualiza o elimina primero esos vínculos.");
   await runAccountingTransaction(db, fs, async (transaction) => {
     const targetSnapshot = await transaction.get(targetRef);
     if (!targetSnapshot.exists()) throw new Error("El registro ya no existe. Actualiza la pantalla.");
-    const queries = await Promise.all(references.map(async ([collection, field]) => {
-    const ref = await collectionRef(uid, collection);
-      return fs.query(ref, fs.where(field, "==", id), fs.limit(1));
-    }));
-    const matches = await Promise.all(queries.map((query) => transaction.get(query)));
-    if (matches.some((result) => !result.empty)) throw new Error("No se puede eliminar: otros registros dependen de este elemento. Actualiza o elimina primero esos vínculos.");
     if (name === "cuentas") transaction.update(targetRef, { estado: "ARCHIVADA", updatedAt: fs.serverTimestamp() });
     else if (name === "deudas") {
       const data = targetSnapshot.data();
