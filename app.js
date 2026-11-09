@@ -1121,17 +1121,22 @@ function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
 function openForm(entity, row = null, preset = {}) {
   if (!FIELDS[entity]) return;
   state.editing = { entity, id: row?.id || null, row };
-  $("#dialog-title").textContent = `${row ? "Editar" : "Nuevo"} ${META[entity].singular}`;
+  const contextualMovementType = entity === "movimientos" && !row
+    ? preset.tipo || state.filter.equals?.tipo || ""
+    : "";
+  const movementTypeLabel = contextualMovementType === "INGRESO" ? "ingreso" : "gasto";
+  $("#dialog-title").textContent = `${row ? "Editar" : "Nuevo"} ${contextualMovementType && !row ? movementTypeLabel : META[entity].singular}`;
   const defaults = {
     moneda: state.profile.currency || "PEN", fecha: todayISO(), fecha_saldo_inicial: todayISO(), mes: currentMonth(),
     saldo_inicial: 0, saldo_inicial_usado: 0, monto_pagado: 0, monto_actual: 0, numero_cuotas: 1,
-    tipo: entity === "propietarios" ? "PERSONA" : entity === "tarjetas" ? "CREDITO" : "GASTO",
+    tipo: entity === "movimientos" ? contextualMovementType || "GASTO" : entity === "propietarios" ? "PERSONA" : entity === "tarjetas" ? "CREDITO" : "GASTO",
     tipo_deuda: row?.tipo_deuda || "", origen_saldo: row?.origen_saldo || "SALDO_INICIAL",
     confirmacion_principal: row ? (row.principal_confirmado ? "SI" : "NO") : "NO",
     medio_pago: "CUENTA_BANCARIA", estado: "ACTIVA", estado_deuda: "PENDIENTE",
   };
   const fields = FIELDS[entity].map(([name, label, type, options, optional]) => {
     let value = row?.[name] ?? preset[name] ?? defaults[name] ?? "";
+    if (name === "tipo" && contextualMovementType && !row) return `<input type="hidden" name="tipo" value="${esc(contextualMovementType)}">`;
     if (entity === "categorias" && name === "color" && !value) value = CATEGORY_COLORS[0];
     if (name === "institucion_id" && row?.institucion_id?.startsWith("base-")) value = row.institucion_id;
     if (entity === "tarjetas" && name === "propietario_id" && !value && row?.cuenta_id) {
