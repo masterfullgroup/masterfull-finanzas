@@ -117,6 +117,13 @@ function toast(message) {
   window.setTimeout(() => element.classList.remove("show"), 3200);
 }
 
+function setFormError(message = "") {
+  const element = $("#form-error");
+  if (!element) return;
+  element.textContent = message;
+  element.hidden = !message;
+}
+
 function money(value, currency = "PEN") {
   const digits = ["JPY", "CLP", "COP"].includes(currency) ? 0 : 2;
   return `${CURRENCY_SYMBOLS[currency] || currency} ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
@@ -367,7 +374,12 @@ function bind() {
     if (event.target.matches("[data-profile-form]")) { event.preventDefault(); void saveProfile(event.target); }
   });
   $("#record-form").addEventListener("submit", (event) => void saveForm(event));
-  $("#record-form").addEventListener("change", (event) => updateFormFlow(event.target));
+  $("#record-form").addEventListener("invalid", (event) => {
+    const field = FIELDS[state.editing?.entity]?.find(([name]) => name === event.target.name);
+    setFormError(field ? `Revisa el campo «${field[1]}».` : "Revisa los campos obligatorios e inténtalo de nuevo.");
+  }, true);
+  $("#record-form").addEventListener("input", () => setFormError(""));
+  $("#record-form").addEventListener("change", (event) => { setFormError(""); updateFormFlow(event.target); });
 }
 
 function toggleSidebar() {
@@ -1120,6 +1132,7 @@ function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
 
 function openForm(entity, row = null, preset = {}) {
   if (!FIELDS[entity]) return;
+  setFormError("");
   state.editing = { entity, id: row?.id || null, row };
   const contextualMovementType = entity === "movimientos" && !row
     ? preset.tipo || state.filter.equals?.tipo || ""
@@ -1153,6 +1166,7 @@ function openForm(entity, row = null, preset = {}) {
 function openDebtSettlement(debt) {
   const accounts = (state.data.cuentas || []).filter((account) => account.moneda === debt.moneda);
   if (!accounts.length) { toast("Crea una cuenta en la misma moneda antes de registrar pagos o cobros."); return; }
+  setFormError("");
   state.editing = { entity: "debtSettlement", id: debt.id, row: debt };
   $("#dialog-title").textContent = debt.tipo_deuda === "POR_PAGAR" ? "Registrar pago de principal" : "Registrar cobro de principal";
   const options = accounts.map((account) => `<option value="${esc(account.id)}" ${account.id === debt.cuenta_id ? "selected" : ""}>${esc(account.nombre)} · ${esc(moneyFromMinor(account.saldoActualMinor ?? account.saldoInicialMinor, account.moneda))}</option>`).join("");
@@ -1164,6 +1178,7 @@ function openDebtSettlement(debt) {
 }
 
 function openAccountBaseline(account) {
+  setFormError("");
   state.editing = { entity: "accountBaseline", id: account.id, row: account };
   $("#dialog-title").textContent = "Confirmar saldo inicial";
   const amount = fromMinorUnits(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0, account.moneda);
@@ -1335,6 +1350,7 @@ function validateRecord(entity, value, row) {
 async function saveForm(event) {
   event.preventDefault();
   if (event.submitter?.value === "cancel") { $("#record-dialog").close(); return; }
+  setFormError("");
   const { entity, row, id } = state.editing;
   const button = $("#save-record");
   button.disabled = true;
@@ -1408,7 +1424,7 @@ async function saveForm(event) {
     else await loadEntityPage(false);
   } catch (error) {
     if (uploaded?.path) await deleteReceipt(uploaded.path).catch(() => {});
-    toast(authError(error));
+    setFormError(authError(error));
   } finally {
     button.disabled = false;
     button.textContent = "Guardar";
