@@ -661,6 +661,7 @@ dialog h2 { margin: 0; color: var(--mf-ink); font: 700 20px/1.3 "Plus Jakarta Sa
 :root[data-theme="dark"] .global-search:focus-within { background: var(--mf-card); }
 :root[data-theme="dark"] .global-search kbd { border-color: var(--mf-border-strong); background: #1a2b3d; color: var(--mf-muted); }
 :root[data-theme="dark"] .dashboard-table th, :root[data-theme="dark"] .table-panel th { background: #172737; }
+:root[data-theme="dark"] .table-panel .empty { background: var(--mf-card); color: var(--mf-muted); }
 :root[data-theme="dark"] .btn.primary { color: #06261d; }
 :root[data-theme="dark"] .btn.primary:hover { color: #fff; }
 :root[data-theme="dark"] .metric-value.is-negative, :root[data-theme="dark"] .recent-amount.is-expense { color: #ff7777 !important; }
