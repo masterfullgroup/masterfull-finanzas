@@ -589,9 +589,11 @@ progress::-moz-progress-bar { border-radius: 99px; background: var(--mf-emerald)
 .positive { color: #07845b !important; }
 .negative { color: #d63d43 !important; }
 .account-list { display: grid; gap: 10px; }
+.account-summary, .account-filters, .account-list { width: min(100%, 1240px); margin-right: auto; margin-left: auto; }
 .account-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) minmax(110px, auto); align-items: center; gap: 13px; padding: 15px; }
 .account-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 11px; background: var(--mf-emerald-soft); color: #087f5b; font-size: 14px; font-weight: 800; }
 .account-main { display: grid; min-width: 0; gap: 3px; }
+.account-main .badge { justify-self: start; }
 .account-main strong { overflow: hidden; color: var(--mf-ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .account-main small, .account-balance small { color: var(--mf-muted); font-size: 10px; }
 .account-balance { display: grid; gap: 2px; text-align: right; }
