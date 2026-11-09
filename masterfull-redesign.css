@@ -569,6 +569,7 @@ progress::-moz-progress-bar { border-radius: 99px; background: var(--mf-emerald)
 .section-head .caption { margin-top: 4px; }
 .stats, .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-bottom: 14px; }
 .stats .stat-card, .account-summary > article { display: grid; gap: 7px; padding: 18px; }
+.account-summary > article { background: var(--mf-card); }
 .stat-card span, .account-summary span { color: var(--mf-muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .stat-card strong, .account-summary strong { color: var(--mf-ink); font-size: 21px; font-variant-numeric: tabular-nums; }
 .filters.panel, .account-filters.panel { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 14px; padding: 13px; background: var(--mf-card); }
