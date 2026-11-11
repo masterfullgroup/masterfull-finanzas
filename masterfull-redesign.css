@@ -387,6 +387,7 @@ select option:checked, select option:focus, select option:hover { background-col
 .date-open:hover, .date-open[aria-expanded="true"] { background: var(--mf-emerald-soft); color: var(--mf-emerald-hover); }
 .date-open svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .date-popover { position: absolute; z-index: 70; top: calc(100% + 7px); left: 0; width: 276px; padding: 10px; border: 1px solid var(--mf-border); border-radius: 12px; background: var(--mf-card); box-shadow: var(--mf-shadow-raised); color: var(--mf-ink); }
+.date-popover.is-modal-floating { position: fixed; z-index: 1200; }
 .date-popover[hidden] { display: none !important; }
 .date-popover-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 5px; margin-bottom: 8px; }
 .date-popover-header strong { color: var(--mf-ink); font-size: 12px; font-weight: 700; text-align: center; text-transform: capitalize; }

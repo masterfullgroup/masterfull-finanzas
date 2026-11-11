@@ -185,10 +185,30 @@ function renderDatePopover(control) {
   control.querySelector("[data-date-popover]").dataset.today = todayValue;
 }
 
+function positionModalDatePopover(control, popover) {
+  const dialog = control.closest("dialog");
+  if (!dialog) return;
+  popover.classList.add("is-modal-floating");
+  popover.style.top = "0px";
+  popover.style.left = "0px";
+  const dialogRect = dialog.getBoundingClientRect();
+  const popoverRect = popover.getBoundingClientRect();
+  const minLeft = Math.max(12, dialogRect.left + 12);
+  const maxLeft = Math.min(window.innerWidth - popoverRect.width - 12, dialogRect.right - popoverRect.width - 12);
+  const left = Math.max(minLeft, Math.min(dialogRect.left + (dialogRect.width - popoverRect.width) / 2, maxLeft));
+  const top = Math.max(12, Math.min(dialogRect.top + 58, window.innerHeight - popoverRect.height - 12));
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
 function closeDatePopovers(except = null) {
   document.querySelectorAll("[data-date-control]").forEach((control) => {
     if (control === except) return;
-    control.querySelector("[data-date-popover]").hidden = true;
+    const popover = control.querySelector("[data-date-popover]");
+    popover.hidden = true;
+    popover.classList.remove("is-modal-floating");
+    popover.style.removeProperty("top");
+    popover.style.removeProperty("left");
     control.querySelector("[data-date-open]").setAttribute("aria-expanded", "false");
   });
 }
@@ -205,12 +225,13 @@ function onDateControlClick(event) {
     renderDatePopover(control);
     const popover = control.querySelector("[data-date-popover]");
     popover.hidden = false;
+    positionModalDatePopover(control, popover);
     openButton.setAttribute("aria-expanded", "true");
     return;
   }
   const action = event.target.closest("[data-date-shift], [data-date-value], [data-date-today], [data-date-clear]");
   if (!action) {
-    if (!event.target.closest("[data-date-control]")) closeDatePopovers();
+    if (!event.target.closest("[data-date-control], [data-date-popover]")) closeDatePopovers();
     return;
   }
   const control = action.closest("[data-date-control]");
@@ -228,8 +249,7 @@ function onDateControlClick(event) {
   if (input.value) control.dataset.viewMonth = input.value.slice(0, 7);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  popover.hidden = true;
-  control.querySelector("[data-date-open]").setAttribute("aria-expanded", "false");
+  closeDatePopovers();
 }
 
 function navHTML() {
@@ -343,6 +363,7 @@ function bind() {
     }
   });
   document.addEventListener("click", onDateControlClick);
+  $("#record-dialog").addEventListener("close", () => closeDatePopovers());
   $("#dashboard-month").addEventListener("change", (event) => {
     state.dashboardMonth = event.target.value || currentMonth();
     const control = event.target.closest("[data-date-control]");
