@@ -577,6 +577,7 @@ progress::-moz-progress-bar { border-radius: 99px; background: var(--mf-emerald)
 .account-filters input { min-width: 220px; flex: 1; }
 .account-filters select { min-width: 145px; min-height: 40px; font-size: 11px; }
 .table-panel { overflow: hidden; padding: 0; }
+.table-panel + .table-panel { margin-top: 16px; }
 .table-panel > .section-head { margin: 0; padding: 19px 20px 14px; }
 .table-panel .table-scroll { overflow: auto; }
 .table-panel table { min-width: 680px; }
