@@ -1100,7 +1100,7 @@ function getOptions(key, field, currentValue = "") {
   if (OPTIONS[key]) return OPTIONS[key];
   if (key === "estadoCuenta") return ["ACTIVA", "INACTIVA", "ARCHIVADA"];
   if (key === "cuentas") return (state.data.cuentas || []).filter((row) => row.estado !== "ARCHIVADA");
-  if (key === "tarjetas") return (state.data.tarjetas || []).filter((row) => !row.archivada);
+  if (key === "tarjetas") return (state.data.tarjetas || []).filter((row) => !row.archivada && (field !== "pagosTarjeta" || row.tipo === "CREDITO"));
   if (key === "personas") return state.data.personas || [];
   if (key === "propietarios") return (state.data.propietarios || []).filter((row) => row.estado !== "INACTIVO");
   if (key === "instituciones") return state.data.instituciones?.length ? state.data.instituciones : BASE_INSTITUTIONS;
@@ -1126,7 +1126,10 @@ function formFieldHTML(field, label, type, optionKey, optional, value, entity) {
   if (type === "relation") {
     const options = getOptions(optionKey, entity);
     const blank = optional ? `<option value="">Sin asignar</option>` : `<option value="">Selecciona</option>`;
-    return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}>${blank}${options.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === String(value) ? "selected" : ""}>${esc(item.nombre || item.email || "")}${item.tipo ? ` · ${esc(optionLabel(item.tipo))}` : ""}</option>`).join("")}</select></label>`;
+    return `<label data-field="${field}">${esc(label)}<select name="${field}" ${optionalAttr}>${blank}${options.map((item) => {
+      const details = [optionKey === "tarjetas" && item.entidad ? optionLabel(item.entidad) : "", item.tipo ? optionLabel(item.tipo) : ""].filter(Boolean);
+      return `<option value="${esc(item.id)}" ${String(item.id) === String(value) ? "selected" : ""}>${esc(item.nombre || item.email || "")}${details.length ? ` · ${esc(details.join(" · "))}` : ""}</option>`;
+    }).join("")}</select></label>`;
   }
   if (type === "textarea") return `<label class="wide" data-field="${field}">${esc(label)}<textarea name="${field}" ${optionalAttr}>${esc(value || "")}</textarea></label>`;
   let inputValue = value ?? "";
