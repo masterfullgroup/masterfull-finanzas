@@ -353,7 +353,7 @@ function bind() {
   $("#auth-toggle").addEventListener("click", toggleAuth);
   $("#forgot-password").addEventListener("click", resetPassword);
   $("#logout").addEventListener("click", () => services.authSdk.signOut(services.auth));
-  $("#add-main").addEventListener("click", () => openForm(state.page));
+  $("#add-main").addEventListener("click", () => openForm(state.page, null, state.page === "movimientos" && ["INGRESO", "GASTO"].includes(state.filter.equals?.tipo) ? { tipo: state.filter.equals.tipo } : {}));
   $("#content").addEventListener("click", (event) => void contentClick(event));
   $("#content").addEventListener("click", (event) => {
     const trigger = event.target.closest("[data-chart-range-trigger]");
@@ -515,7 +515,12 @@ async function route() {
     link.classList.toggle("active", link.dataset.page === state.page && matchingType);
   });
   const fallbackTitles = { flujo: "Flujo mensual", reportes: "Reportes", perfil: "Mi perfil" };
-  const info = META[state.page] || { title: fallbackTitles[state.page] || "Finanzas", eye: "TU ESPACIO FINANCIERO" };
+  const movementSection = state.page === "movimientos" ? state.filter.equals?.tipo : "";
+  const info = movementSection === "INGRESO"
+    ? { ...META.movimientos, title: "Ingresos", eye: "REGISTRO DE INGRESOS", description: "Revisa y organiza los ingresos registrados." }
+    : movementSection === "GASTO"
+      ? { ...META.movimientos, title: "Gastos", eye: "REGISTRO DE GASTOS", description: "Revisa y organiza los gastos registrados." }
+      : META[state.page] || { title: fallbackTitles[state.page] || "Finanzas", eye: "TU ESPACIO FINANCIERO" };
   if (state.page === "resumen") {
     const name = state.profile.displayName || state.user?.displayName || state.user?.email?.split("@")[0] || "";
     const firstName = name.trim().split(/\s+/)[0];
@@ -901,10 +906,12 @@ function renderPeople(rows) {
 
 function renderEntity(entity) {
   const meta = META[entity];
+  const movementType = entity === "movimientos" && ["INGRESO", "GASTO"].includes(state.filter.equals?.tipo) ? state.filter.equals.tipo : "";
+  const movementTitle = movementType === "INGRESO" ? "Ingresos" : movementType === "GASTO" ? "Gastos" : meta.title;
   const rows = state.data[entity] || [];
   const fields = LIST_FIELDS[entity] || [];
   const filterable = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
-  const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select><select name="categoria_id"><option value="">Todas las categorías</option>${(state.data.categorias || []).filter((row) => !state.filter.equals?.tipo || row.tipo === state.filter.equals.tipo).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.categoria_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select><select name="persona_id"><option value="">Todas las personas</option>${(state.data.personas || []).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.persona_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
+  const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `${movementType ? `<input type="hidden" name="tipo" value="${movementType}">` : `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>`}<select name="categoria_id"><option value="">Todas las categorías</option>${(state.data.categorias || []).filter((row) => !movementType || row.tipo === movementType).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.categoria_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select><select name="persona_id"><option value="">Todas las personas</option>${(state.data.personas || []).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.persona_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
   const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
   const visibleRows = entity === "instituciones" ? institutionRows : entity === "tarjetas" ? rows.filter((row) => !row.archivada) : rows;
   if (entity === "personas") {
@@ -931,7 +938,7 @@ function renderEntity(entity) {
   }).join("") : "";
   const relatedPanel = entity === "movimientos" && !state.filter.equals?.tipo && !state.filter.equals?.categoria_id && !state.filter.equals?.persona_id
     ? `<section class="panel table-panel"><div class="section-head"><div><h2>Transferencias y pagos de tarjeta</h2><p class="caption">Operaciones enlazadas a sus registros originales; no se duplican como ingresos o gastos. Abre cada módulo para consultar y paginar el historial completo.</p></div><a class="link-button" href="#transferencias">Ver transferencias</a><a class="link-button" href="#pagosTarjeta">Ver pagos de tarjetas</a></div><div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Efecto en flujo</th><th>Importe</th><th>Acciones</th></tr></thead><tbody>${relatedRows || `<tr><td colspan="6" class="empty">No hay transferencias ni pagos de tarjeta para los filtros actuales.</td></tr>`}</tbody></table></div></section>` : "";
-  $("#content").innerHTML = `${filters}${relatedPanel}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(meta.title)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll${responsiveTableClass}"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${debtHistory}${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
+  $("#content").innerHTML = `${filters}${relatedPanel}<section class="panel table-panel"><div class="section-head"><div><h2>${esc(movementTitle)}</h2><p class="caption">Se muestran ${visibleRows.length} registros en esta página.</p></div></div><div class="table-scroll${responsiveTableClass}"><table><thead><tr>${columns}<th>Acciones</th></tr></thead><tbody>${body}</tbody></table></div></section>${debtHistory}${state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : ""}`;
 }
 
 async function applyFilters(form) {
@@ -941,6 +948,7 @@ async function applyFilters(form) {
     return renderAccounts();
   }
   const equals = Object.fromEntries(["tipo", "categoria_id", "persona_id"].filter((field) => values[field]).map((field) => [field, values[field]]));
+  if (form.matches("[data-filter-form]") && state.page === "movimientos" && ["INGRESO", "GASTO"].includes(state.filter.equals?.tipo)) equals.tipo = state.filter.equals.tipo;
   state.filter = { startDate: values.startDate, endDate: values.endDate, equals };
   state.data[state.page] = [];
   state.entityCursor = null;
@@ -1454,7 +1462,8 @@ async function contentClick(event) {
   }
   if (event.target.closest("[data-clear-movement-filter]")) {
     state.movementAccountFilter = null;
-    state.filter = {};
+    const movementType = state.page === "movimientos" ? state.filter.equals?.tipo : "";
+    state.filter = ["INGRESO", "GASTO"].includes(movementType) ? { equals: { tipo: movementType } } : {};
     return loadEntityPage(false);
   }
   if (event.target.closest("[data-load-more]")) return loadEntityPage(true);
@@ -1465,7 +1474,8 @@ async function contentClick(event) {
     catch (error) { toast(authError(error)); }
   }
   if (event.target.closest("[data-clear-filter]")) {
-    state.filter = {};
+    const movementType = state.page === "movimientos" ? state.filter.equals?.tipo : "";
+    state.filter = ["INGRESO", "GASTO"].includes(movementType) ? { equals: { tipo: movementType } } : {};
     state.movementAccountFilter = null;
     state.data[state.page] = [];
     state.entityCursor = null;
