@@ -92,7 +92,7 @@
   --ds-dialog-bg: var(--ds-surface);
   --ds-dialog-overlay: rgba(16, 37, 34, .62);
   --ds-surface-hover: #f1f8f6;
-  --ds-separator: #e4ece8;
+  --ds-separator: color-mix(in srgb, var(--mf-border) 38%, transparent);
   --ds-button-height: 48px;
   --ds-button-radius: 10px;
   --ds-button-font-size: 14px;
