@@ -1231,6 +1231,14 @@ function updateFormFlow(target) {
   };
   const guidance = $("#flow-guidance");
   if (entity === "movimientos") {
+    const movementType = form.elements.tipo?.value || "";
+    const categorySelect = form.elements.categoria_id;
+    if (categorySelect) {
+      const categories = (state.data.categorias || []).filter((category) => !movementType || category.tipo === movementType);
+      const selectedCategoryId = categories.some((category) => category.id === categorySelect.value) ? categorySelect.value : "";
+      categorySelect.innerHTML = `<option value="">Selecciona</option>${categories.map((category) => `<option value="${esc(category.id)}">${esc(category.nombre)} · ${esc(optionLabel(category.tipo))}</option>`).join("")}`;
+      categorySelect.value = selectedCategoryId;
+    }
     const method = form.elements.medio_pago?.value || "";
     const credit = method === "TARJETA_CREDITO";
     const debit = method === "TARJETA_DEBITO";
