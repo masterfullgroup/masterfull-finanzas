@@ -175,7 +175,7 @@ dialog h2{font-size:20px}.form-grid{gap:16px;padding:24px}.form-grid label{font-
 .people-relation{background:#d9f7ed;color:#059669}
 .people-card:hover{border-color:#d9f7ed;box-shadow:0 10px 24px rgba(24,42,76,.11)}
 .flow-guidance{border-color:#d9f7ed;background:#d9f7ed;color:#081827}
-.account-filters{width:100%;max-width:none;justify-self:stretch;justify-content:start;margin-inline:0}
+.account-filters{display:grid;width:100%;max-width:none;justify-self:stretch;justify-content:start;grid-template-columns:minmax(240px,min(35vw,500px)) repeat(3,max-content) max-content max-content;margin:0 0 18px}
 @media(max-width:760px){.sidebar nav a.active{box-shadow:0 3px 10px rgba(16,185,129,.18)}}
 
 /* Identidad cromática: bosque, jade y ámbar */
