@@ -137,13 +137,33 @@ function todayISO() { return dateInAppTimeZone(); }
 function currentMonth() { return todayISO().slice(0, 7); }
 function newId() { return crypto.randomUUID(); }
 
+function dateToDisplay(value, kind = "date") {
+  if (kind === "month") {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})$/);
+    return match ? `${match[2]}/${match[1]}` : "";
+  }
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+}
+
+function dateToISO(value, kind = "date") {
+  const input = String(value || "").trim();
+  const match = kind === "month" ? input.match(/^(\d{2})\/(\d{4})$/) : input.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return "";
+  if (kind === "month") return `${match[2]}-${match[1]}`;
+  const [, day, month, year] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 12);
+  return date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day)
+    ? `${year}-${month}-${day}` : "";
+}
+
 function dateControlMarkup(name, value, kind = "date", required = false, id = "", ariaLabel = "") {
   const normalized = String(value || "");
-  const pattern = kind === "month" ? "[0-9]{4}-[0-9]{2}" : "[0-9]{4}-[0-9]{2}-[0-9]{2}";
-  const placeholder = kind === "month" ? "aaaa-mm" : "aaaa-mm-dd";
+  const pattern = kind === "month" ? "(0[1-9]|1[0-2])/[0-9]{4}" : "(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}";
+  const placeholder = kind === "month" ? "mm/aaaa" : "dd/mm/aaaa";
   const label = kind === "month" ? "Elegir mes" : "Elegir fecha";
   const month = normalized.slice(0, 7) || currentMonth();
-  return `<span class="date-control" data-date-control data-kind="${kind}" data-view-month="${esc(month)}"><input ${id ? `id="${esc(id)}"` : ""} name="${esc(name)}" data-date-input type="text" inputmode="numeric" autocomplete="off" placeholder="${placeholder}" pattern="${pattern}" title="Usa el formato ${placeholder}" aria-label="${esc(ariaLabel || label)}" value="${esc(normalized)}" ${required ? "required" : ""}><button class="date-open" type="button" data-date-open aria-label="${label}" aria-expanded="false"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></button><div class="date-popover" data-date-popover role="dialog" aria-label="${label}" hidden></div></span>`;
+  return `<span class="date-control" data-date-control data-kind="${kind}" data-view-month="${esc(month)}"><input ${id ? `id="${esc(id)}"` : ""} name="${esc(name)}" data-date-input type="text" inputmode="numeric" autocomplete="off" placeholder="${placeholder}" pattern="${pattern}" title="Usa el formato ${placeholder}" aria-label="${esc(ariaLabel || label)}" value="${esc(dateToDisplay(normalized, kind))}" ${required ? "required" : ""}><button class="date-open" type="button" data-date-open aria-label="${label}" aria-expanded="false"><svg aria-hidden="true"><use href="#i-calendar"></use></svg></button><div class="date-popover" data-date-popover role="dialog" aria-label="${label}" hidden></div></span>`;
 }
 
 function localISODate(date) {
@@ -153,8 +173,8 @@ function localISODate(date) {
 function renderDatePopover(control) {
   const input = control.querySelector("[data-date-input]");
   const kind = control.dataset.kind;
-  const selected = input.value;
-  const validDate = kind === "month" ? /^[0-9]{4}-[0-9]{2}$/.test(selected) : /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selected);
+  const selected = dateToISO(input.value, kind);
+  const validDate = Boolean(selected);
   const initialMonth = validDate ? selected.slice(0, 7) : currentMonth();
   const viewMonth = control.dataset.viewMonth || initialMonth;
   const [year, month] = viewMonth.split("-").map(Number);
@@ -219,8 +239,8 @@ function onDateControlClick(event) {
   if (openButton) {
     const control = openButton.closest("[data-date-control]");
     const input = control.querySelector("[data-date-input]");
-    const pattern = control.dataset.kind === "month" ? /^[0-9]{4}-[0-9]{2}$/ : /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
-    if (pattern.test(input.value)) control.dataset.viewMonth = input.value.slice(0, 7);
+    const isoValue = dateToISO(input.value, control.dataset.kind);
+    if (isoValue) control.dataset.viewMonth = isoValue.slice(0, 7);
     closeDatePopovers(control);
     renderDatePopover(control);
     const popover = control.querySelector("[data-date-popover]");
@@ -245,8 +265,9 @@ function onDateControlClick(event) {
   }
   const input = control.querySelector("[data-date-input]");
   const popover = control.querySelector("[data-date-popover]");
-  input.value = action.hasAttribute("data-date-today") ? popover.dataset.today : action.hasAttribute("data-date-clear") ? "" : action.dataset.dateValue;
-  if (input.value) control.dataset.viewMonth = input.value.slice(0, 7);
+  const isoValue = action.hasAttribute("data-date-today") ? popover.dataset.today : action.hasAttribute("data-date-clear") ? "" : action.dataset.dateValue;
+  input.value = dateToDisplay(isoValue, control.dataset.kind);
+  if (isoValue) control.dataset.viewMonth = isoValue.slice(0, 7);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
   closeDatePopovers();
@@ -365,9 +386,9 @@ function bind() {
   document.addEventListener("click", onDateControlClick);
   $("#record-dialog").addEventListener("close", () => closeDatePopovers());
   $("#dashboard-month").addEventListener("change", (event) => {
-    state.dashboardMonth = event.target.value || currentMonth();
+    state.dashboardMonth = dateToISO(event.target.value, "month") || currentMonth();
     const control = event.target.closest("[data-date-control]");
-    if (control && event.target.value) control.dataset.viewMonth = event.target.value.slice(0, 7);
+    if (control && state.dashboardMonth) control.dataset.viewMonth = state.dashboardMonth.slice(0, 7);
     if (state.page === "resumen") void renderDashboard();
   });
   $("#auth-form").addEventListener("submit", submitAuth);
@@ -554,7 +575,7 @@ async function route() {
   $("#page-eyebrow").textContent = info.eye;
   $("#dashboard-period-control").classList.toggle("hidden", state.page !== "resumen");
   $("#today").classList.toggle("hidden", state.page === "resumen");
-  $("#dashboard-month").value = state.dashboardMonth || currentMonth();
+  $("#dashboard-month").value = dateToDisplay(state.dashboardMonth || currentMonth(), "month");
   closeProfileMenu();
   $("#add-main").classList.toggle("hidden", !FIELDS[state.page]);
   state.entityCursor = null;
@@ -964,6 +985,8 @@ function renderEntity(entity) {
 
 async function applyFilters(form) {
   const values = Object.fromEntries(new FormData(form).entries());
+  values.startDate = dateToISO(values.startDate);
+  values.endDate = dateToISO(values.endDate);
   if (form.matches("[data-account-filter-form]")) {
     state.accountFilters = values;
     return renderAccounts();
@@ -1206,7 +1229,7 @@ function openDebtSettlement(debt) {
   const outstanding = Math.max(0, Number(debt.montoTotalMinor || 0) - Number(debt.montoPagadoMinor || 0));
   const principalHelp = debt.principal_confirmado === true ? `Saldo de principal pendiente: <strong>${esc(moneyFromMinor(outstanding, debt.moneda))}</strong>.` : "El principal anterior no está confirmado; registra intereses/comisiones ahora y confirma el principal antes de amortizar.";
   const principalDisabled = debt.principal_confirmado === true ? "" : "disabled";
-  $("#form-fields").innerHTML = `<p class="field-help wide">${principalHelp} El principal no se registra como ingreso ni gasto; intereses y comisiones se separan.</p><label>Cuenta afectada<select name="cuenta_id" required>${options}</select></label><label>Fecha efectiva<input name="fecha" type="date" value="${todayISO()}" required></label><label>Principal ${debt.tipo_deuda === "POR_PAGAR" ? "pagado" : "cobrado"}<input name="principal" type="number" min="0" step="0.01" value="0" ${principalDisabled}></label><label>Interés<input name="interes" type="number" min="0" step="0.01" value="0"></label><label>Comisión<input name="comision" type="number" min="0" step="0.01" value="0"></label><label class="wide">Descripción<input name="descripcion" maxlength="200" placeholder="Opcional"></label>`;
+  $("#form-fields").innerHTML = `<p class="field-help wide">${principalHelp} El principal no se registra como ingreso ni gasto; intereses y comisiones se separan.</p><label>Cuenta afectada<select name="cuenta_id" required>${options}</select></label><div class="field-control"><label for="settlement-date">Fecha efectiva</label>${dateControlMarkup("fecha", todayISO(), "date", true, "settlement-date")}</div><label>Principal ${debt.tipo_deuda === "POR_PAGAR" ? "pagado" : "cobrado"}<input name="principal" type="number" min="0" step="0.01" value="0" ${principalDisabled}></label><label>Interés<input name="interes" type="number" min="0" step="0.01" value="0"></label><label>Comisión<input name="comision" type="number" min="0" step="0.01" value="0"></label><label class="wide">Descripción<input name="descripcion" maxlength="200" placeholder="Opcional"></label>`;
   $("#record-dialog").showModal();
 }
 
@@ -1215,7 +1238,7 @@ function openAccountBaseline(account) {
   state.editing = { entity: "accountBaseline", id: account.id, row: account };
   $("#dialog-title").textContent = "Confirmar saldo inicial";
   const amount = fromMinorUnits(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0, account.moneda);
-  $("#form-fields").innerHTML = `<p class="field-help wide">Este valor crea una línea base de auditoría. Debe coincidir con el saldo actual guardado y confirmado; no cambia el saldo de la cuenta.</p><label>Saldo confirmado (${esc(account.moneda)})<input name="confirmedBalance" type="number" min="0" step="0.01" value="${amount}" required></label><label>Fecha efectiva de corte<input name="effectiveDate" type="date" value="${todayISO()}" required></label>`;
+  $("#form-fields").innerHTML = `<p class="field-help wide">Este valor crea una línea base de auditoría. Debe coincidir con el saldo actual guardado y confirmado; no cambia el saldo de la cuenta.</p><label>Saldo confirmado (${esc(account.moneda)})<input name="confirmedBalance" type="number" min="0" step="0.01" value="${amount}" required></label><div class="field-control"><label for="baseline-date">Fecha efectiva de corte</label>${dateControlMarkup("effectiveDate", todayISO(), "date", true, "baseline-date")}</div>`;
   $("#record-dialog").showModal();
 }
 
@@ -1300,6 +1323,7 @@ function readForm(entity, row) {
     if (type === "number") value[name] = raw === "" ? null : Number(raw);
     else if (type === "money") value[name] = raw === "" ? 0 : Number(raw);
     else if (type === "relation") value[name] = raw || null;
+    else if (type === "date" || type === "month") value[name] = dateToISO(raw, type);
     else value[name] = typeof raw === "string" ? raw.trim() : raw;
   }
   if (row?.createdAt) value.createdAt = row.createdAt;
@@ -1402,7 +1426,7 @@ async function saveForm(event) {
       const formData = new FormData(event.currentTarget);
       await saveDebtSettlement(state.user.uid, row.id, {
         cuenta_id: formData.get("cuenta_id"), moneda: row.moneda,
-        fecha: formData.get("fecha"), principal: Number(formData.get("principal") || 0),
+        fecha: dateToISO(formData.get("fecha")), principal: Number(formData.get("principal") || 0),
         interes: Number(formData.get("interes") || 0), comision: Number(formData.get("comision") || 0),
         descripcion: String(formData.get("descripcion") || "").trim(),
       });
@@ -1415,7 +1439,7 @@ async function saveForm(event) {
     }
     if (entity === "accountBaseline") {
       const formData = new FormData(event.currentTarget);
-      const created = await establishAccountBaseline(state.user.uid, id, Number(formData.get("confirmedBalance")), formData.get("effectiveDate"));
+      const created = await establishAccountBaseline(state.user.uid, id, Number(formData.get("confirmedBalance")), dateToISO(formData.get("effectiveDate")));
       $("#record-dialog").close();
       toast(created ? "Línea base confirmada; no se alteró el saldo." : "Esta cuenta ya tiene una línea base inmutable.");
       await loadReferenceData();
@@ -1424,6 +1448,8 @@ async function saveForm(event) {
       return;
     }
     const value = readForm(entity, row);
+    const invalidDate = FIELDS[entity].find(([name, , type, , optional]) => ["date", "month"].includes(type) && !optional && !value[name]);
+    if (invalidDate) throw new Error(`Escribe una fecha válida en formato ${invalidDate[2] === "month" ? "MM/AAAA" : "DD/MM/AAAA"}.`);
     validateRecord(entity, value, row);
     if (entity === "cuentas") {
       value.naturaleza = ACCOUNT_NATURE[value.tipo] || "ACTIVO";
