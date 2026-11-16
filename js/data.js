@@ -128,6 +128,18 @@ export async function listPage(uid, name, options = {}) {
   };
 }
 
+export async function listAllPages(uid, name, options = {}) {
+  const rows = [];
+  let cursor = options.cursor || null;
+  let page;
+  do {
+    page = await listPage(uid, name, { ...options, cursor, limit: 500 });
+    rows.push(...page.rows);
+    cursor = page.cursor;
+  } while (page.hasMore && cursor);
+  return { rows, cursor, hasMore: false };
+}
+
 export async function getDocument(uid, name, id) {
   const { firestoreSdk: fs } = await getFirebaseServices();
   const ref = await fs.doc(await collectionRef(uid, name), id);
@@ -417,11 +429,16 @@ export async function getProfile(uid) {
 
 export async function monthTotals(uid, startDate, endDate, currency = "PEN") {
   const { firestoreSdk: fs } = await getFirebaseServices();
-  const ref = await collectionRef(uid, "movimientos");
   const totals = await Promise.all(["INGRESO", "GASTO"].map(async (tipo) => {
-    const filtered = fs.query(ref, fs.where("tipo", "==", tipo), fs.where("moneda", "==", currency), fs.where("fecha", ">=", startDate), fs.where("fecha", "<=", endDate));
-    const snapshot = await fs.getAggregateFromServer(filtered, { total: fs.sum("montoMinor"), count: fs.count() });
-    return snapshot.data();
+    const page = await listAllPages(uid, "movimientos", {
+      limit: 500, orderField: "fecha", direction: "asc", startDate, endDate,
+      equals: { tipo, moneda: currency },
+    });
+    const activeRows = page.rows.filter((row) => !row.anulada);
+    return {
+      total: activeRows.reduce((sum, row) => sum + Number(row.montoMinor || 0), 0),
+      count: activeRows.length,
+    };
   }));
   const eventRef = await collectionRef(uid, "eventosContables");
   const feeQuery = fs.query(eventRef,
@@ -442,16 +459,12 @@ export async function monthTotals(uid, startDate, endDate, currency = "PEN") {
 }
 
 export async function categoryExpenseTotal(uid, categoryId, startDate, endDate, currency = "PEN") {
-  const { firestoreSdk: fs } = await getFirebaseServices();
-  const ref = await collectionRef(uid, "movimientos");
-  const filtered = fs.query(ref,
-    fs.where("tipo", "==", "GASTO"),
-    fs.where("categoria_id", "==", categoryId),
-    fs.where("moneda", "==", currency),
-    fs.where("fecha", ">=", startDate),
-    fs.where("fecha", "<=", endDate));
-  const snapshot = await fs.getAggregateFromServer(filtered, { total: fs.sum("montoMinor") });
-  return Number(snapshot.data().total || 0);
+  const page = await listAllPages(uid, "movimientos", {
+    limit: 500, orderField: "fecha", direction: "asc", startDate, endDate,
+    equals: { tipo: "GASTO", categoria_id: categoryId, moneda: currency },
+  });
+  return page.rows.filter((row) => !row.anulada)
+    .reduce((sum, row) => sum + Number(row.montoMinor || 0), 0);
 }
 
 export async function saveLedgerEntry(uid, collectionName, value, id = value.id || null) {

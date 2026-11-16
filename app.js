@@ -4,10 +4,10 @@ import {
   fromMinorUnits,
 } from "./js/finance.js";
 import {
-  categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, establishAccountBaseline, getProfile, listPage,
+  categoryExpenseTotal, deleteLedgerEntry, deleteReceipt, ensureUserProfile, establishAccountBaseline, getProfile, listAllPages, listPage,
   monthTotals, openReceipt, removeDocument, saveDebt, saveDebtSettlement, saveDocument, saveLedgerEntry,
   saveMovement, updateUserProfile, uploadReceipt,
-} from "./js/data.js?v=transaction-query-fix-20261109";
+} from "./js/data.js?v=exclude-annulled-movements-20261116";
 import { buildEntityPageOptions } from "./js/firestore-query.js";
 
 const PAGE_SIZE = 50;
@@ -693,7 +693,7 @@ async function renderDashboard() {
         const bounds = monthBounds(month);
         return { month, ...await monthTotals(state.user.uid, bounds.start, bounds.end, currency) };
       })),
-      listPage(state.user.uid, "movimientos", { limit: 100, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: currency } }),
+      listAllPages(state.user.uid, "movimientos", { limit: 500, orderField: "fecha", direction: "desc", startDate: start, endDate: end, equals: { moneda: currency } }),
       listPage(state.user.uid, "presupuestos", { limit: 100, orderField: "mes", direction: "desc", equals: { mes: `${selectedMonth}-01`, moneda: currency } }),
       listPage(state.user.uid, "metas", { limit: 4, orderField: "createdAt", direction: "desc" }),
       listPage(state.user.uid, "deudas", { limit: 100, orderField: "createdAt", direction: "desc" }),
@@ -704,7 +704,8 @@ async function renderDashboard() {
     const activeAccounts = (state.data.cuentas || []).filter((item) => !["ARCHIVADA", "INACTIVA"].includes(item.estado));
     const accountBalanceMinor = activeAccounts.filter((item) => (item.moneda || "PEN") === currency)
       .reduce((sum, item) => sum + Number(item.saldoActualMinor ?? item.saldoInicialMinor ?? 0), 0);
-    const monthExpenses = recent.rows.filter((movement) => movement.tipo === "GASTO");
+    const activeMovements = recent.rows.filter((movement) => !movement.anulada);
+    const monthExpenses = activeMovements.filter((movement) => movement.tipo === "GASTO");
     const categoryTotals = monthExpenses.reduce((acc, movement) => {
       acc[movement.categoria_id || "sin-categoria"] = (acc[movement.categoria_id || "sin-categoria"] || 0) + Number(movement.montoMinor || 0);
       return acc;
@@ -723,7 +724,7 @@ async function renderDashboard() {
     const categoryName = (id) => categoryById(id)?.nombre || (id === "sin-categoria" ? "Sin categoría" : "Categoría" );
     const categoryColor = (id) => CATEGORY_COLORS.includes(categoryById(id)?.color) ? categoryById(id).color : CATEGORY_COLORS[0];
     const monthTitle = new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric", timeZone: APP_TIME_ZONE }).format(new Date(`${selectedMonth}-01T12:00:00`));
-    state.data.movimientos = recent.rows;
+    state.data.movimientos = activeMovements;
 
     const metricCards = [
       dashboardMetric("Saldo total", accountBalanceMinor, currency, "wallet", "balance", `${activeAccounts.filter((item) => (item.moneda || "PEN") === currency).length} cuentas · ${currency}`),
@@ -735,7 +736,7 @@ async function renderDashboard() {
     const chartRows = monthlyHistory.map((item) => ({ ...item, cumulativeMinor: 0 }));
     const chartRowsLabel = monthlyHistory.length === 12 ? "Últimos 12 meses" : "Últimos 6 meses";
     const chartRowsSvg = financialChartSvg(chartRows, currency);
-    const recentRows = recent.rows.slice(0, 5).map((item) => {
+    const recentRows = activeMovements.slice(0, 5).map((item) => {
       const income = item.tipo === "INGRESO";
       const typeLabel = income ? "Ingreso" : "Gasto";
       const description = item.descripcion || categoryName(item.categoria_id);
@@ -782,12 +783,18 @@ async function loadEntityPage(append) {
   if (!append) pageLoading();
   try {
     const options = buildEntityPageOptions({ entity, state, append, pageSize: PAGE_SIZE });
-    const result = await listPage(state.user.uid, entity, options);
+    let result = await listPage(state.user.uid, entity, options);
+    const isLedger = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
+    const pageRows = [...result.rows];
+    while (isLedger && result.hasMore && pageRows.filter((row) => !row.anulada).length < PAGE_SIZE) {
+      result = await listPage(state.user.uid, entity, { ...options, cursor: result.cursor });
+      pageRows.push(...result.rows);
+    }
     const old = append || entity === "instituciones" ? (state.data[entity] || []) : [];
     if (entity === "instituciones") {
       const customRows = [...new Map([...old, ...result.rows].filter((row) => !row.base).map((row) => [row.id, row])).values()];
       state.data.instituciones = [...BASE_INSTITUTIONS, ...customRows];
-    } else state.data[entity] = [...old, ...result.rows];
+    } else state.data[entity] = [...old, ...(isLedger ? pageRows.filter((row) => !row.anulada) : pageRows)];
     if (entity === "cuentas" && !append) {
       const baselinePage = await listPage(state.user.uid, "eventosContables", { limit: 500, orderField: "fechaEfectiva", direction: "desc", equals: { eventoTipo: "SALDO_BASE" } });
       const accountIds = new Set(baselinePage.rows.map((event) => event.cuentaId));
@@ -806,16 +813,17 @@ async function loadEntityPage(append) {
           { name: "transferencias", equals: { cuenta_destino_id: state.movementAccountFilter } },
           { name: "pagosTarjeta", equals: { cuenta_id: state.movementAccountFilter } },
         ] : ["transferencias", "pagosTarjeta"].map((name) => ({ name, equals: {} }));
-        const pages = await Promise.all(plans.map(({ name, equals }) => listPage(state.user.uid, name, {
+        const pages = await Promise.all(plans.map(({ name, equals }) => listAllPages(state.user.uid, name, {
           limit: PAGE_SIZE, orderField: "fecha", direction: "desc",
           startDate: state.filter.startDate, endDate: state.filter.endDate,
           equals,
         })));
         const transferRows = pages.flatMap((page, index) => plans[index].name === "transferencias" ? page.rows : []);
         const cardPaymentRows = pages.flatMap((page, index) => plans[index].name === "pagosTarjeta" ? page.rows : []);
-        state.data.transferencias = [...new Map(transferRows.map((row) => [row.id, row])).values()];
-        state.data.pagosTarjeta = [...new Map(cardPaymentRows.map((row) => [row.id, row])).values()];
+        state.data.transferencias = [...new Map(transferRows.filter((row) => !row.anulada).map((row) => [row.id, row])).values()];
+        state.data.pagosTarjeta = [...new Map(cardPaymentRows.filter((row) => !row.anulada).map((row) => [row.id, row])).values()];
         state.relatedOperationRows = pages.flatMap((page, index) => page.rows
+          .filter((row) => !row.anulada)
           .map((row) => ({ ...row, operationCollection: plans[index].name })))
           .filter((row, index, rows) => rows.findIndex((item) => item.operationCollection === row.operationCollection && item.id === row.id) === index)
           .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
@@ -934,7 +942,7 @@ function renderEntity(entity) {
   const filterable = ["movimientos", "transferencias", "pagosTarjeta"].includes(entity);
   const filters = filterable ? `<form class="filters panel" data-filter-form>${dateControlMarkup("startDate", state.filter.startDate, "date", false, "", "Desde")}${dateControlMarkup("endDate", state.filter.endDate, "date", false, "", "Hasta")}${entity === "movimientos" ? `${movementType ? `<input type="hidden" name="tipo" value="${movementType}">` : `<select name="tipo"><option value="">Todos los tipos</option>${OPTIONS.tipoMovimiento.map((value) => `<option value="${value}" ${state.filter.equals?.tipo === value ? "selected" : ""}>${esc(optionLabel(value))}</option>`).join("")}</select>`}<select name="categoria_id"><option value="">Todas las categorías</option>${(state.data.categorias || []).filter((row) => !movementType || row.tipo === movementType).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.categoria_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select><select name="persona_id"><option value="">Todas las personas</option>${(state.data.personas || []).map((row) => `<option value="${esc(row.id)}" ${state.filter.equals?.persona_id === row.id ? "selected" : ""}>${esc(row.nombre)}</option>`).join("")}</select>${state.movementAccountFilter ? `<button class="btn secondary" type="button" data-clear-movement-filter>Quitar filtro de cuenta</button>` : ""}` : ""}<button class="btn secondary" type="submit">Filtrar</button><button class="btn secondary" type="button" data-clear-filter>Limpiar</button></form>` : "";
   const institutionRows = entity === "instituciones" ? [...BASE_INSTITUTIONS, ...(state.data.instituciones || []).filter((row) => !row.base)] : rows;
-  const visibleRows = entity === "instituciones" ? institutionRows : entity === "tarjetas" ? rows.filter((row) => !row.archivada) : rows;
+  const visibleRows = entity === "instituciones" ? institutionRows : entity === "tarjetas" ? rows.filter((row) => !row.archivada) : ["movimientos", "transferencias", "pagosTarjeta"].includes(entity) ? rows.filter((row) => !row.anulada) : rows;
   if (entity === "personas") {
     $("#content").innerHTML = renderPeople(visibleRows) + (state.entityHasMore ? `<div class="load-more"><button class="btn secondary" data-load-more>Cargar más</button></div>` : "");
     return;
@@ -1024,7 +1032,7 @@ async function loadReports(append) {
       }
     }
     const legacyRows = pages.slice(0, names.length).flatMap((page, index) => page.rows
-      .filter((row) => !row.eventoContableId || row.legacyEventAnchor)
+      .filter((row) => !row.anulada && (!row.eventoContableId || row.legacyEventAnchor))
       .map((row) => ({ ...(row.legacyEventAnchorSnapshot || row), id: row.id, operationCollection: names[index], legacyEventAnchor: Boolean(row.legacyEventAnchor) })));
     const eventRows = pages[3].rows.map((event) => ({
       ...event.operacionSnapshot,
