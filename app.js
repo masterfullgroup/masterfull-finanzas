@@ -1236,7 +1236,7 @@ function updateFormFlow(target) {
     if (categorySelect) {
       const categories = (state.data.categorias || []).filter((category) => !movementType || category.tipo === movementType);
       const selectedCategoryId = categories.some((category) => category.id === categorySelect.value) ? categorySelect.value : "";
-      categorySelect.innerHTML = `<option value="">Selecciona</option>${categories.map((category) => `<option value="${esc(category.id)}">${esc(category.nombre)} · ${esc(optionLabel(category.tipo))}</option>`).join("")}`;
+      categorySelect.innerHTML = `<option value="">Selecciona</option>${categories.map((category) => `<option value="${esc(category.id)}">${esc(category.nombre)}</option>`).join("")}`;
       categorySelect.value = selectedCategoryId;
     }
     const method = form.elements.medio_pago?.value || "";
@@ -1249,7 +1249,7 @@ function updateFormFlow(target) {
       form.elements.tarjeta_id.value = "";
       form.elements.cuenta_id.value = "";
     }
-    guidance.textContent = credit ? "La compra aumenta la deuda de la tarjeta; registra el pago como una operación aparte." : debit ? "El gasto se descuenta de la cuenta vinculada a la tarjeta de débito." : "Selecciona la cuenta desde donde sale o ingresa el dinero.";
+    guidance.textContent = credit ? "La compra aumenta la deuda de la tarjeta; registra el pago como una operación aparte." : debit ? "El gasto se descuenta de la cuenta vinculada a la tarjeta de débito." : movementType === "INGRESO" ? "Selecciona la cuenta donde se depositará este ingreso." : "Selecciona la cuenta desde la que pagarás este gasto.";
   } else if (entity === "tarjetas") {
     const debit = form.elements.tipo?.value === "DEBITO";
     const ownerId = form.elements.propietario_id?.value || "";
