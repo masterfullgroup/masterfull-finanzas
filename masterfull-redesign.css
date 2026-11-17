@@ -539,6 +539,18 @@ select option:checked, select option:focus, select option:hover { background-col
 .bank-card-bottom strong { max-width: 61%; color: #f4fbff; font-size: 9px; text-align: right; }
 .bank-card-security { position: absolute; right: 14px; bottom: 3px; color: rgba(226, 239, 248, .58); font-size: 7px; }
 .dashboard-lower-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; margin-top: 14px; }
+.card-payment-forecast { grid-column: 1 / -1; }
+.card-forecast-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px 0; border-top: 1px solid var(--mf-border); border-bottom: 1px solid var(--mf-border); }
+.card-forecast-summary span,.card-forecast-summary strong { display: block; }
+.card-forecast-summary span { color: var(--mf-muted); font-size: 9px; }
+.card-forecast-summary strong { margin-top: 4px; color: var(--mf-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.card-forecast-summary .is-short strong,.card-forecast-status.is-short { color: var(--mf-red, #d34d57); }
+.card-forecast-summary .is-covered strong,.card-forecast-status.is-covered { color: var(--mf-emerald, #087f5b); }
+.card-forecast-status { margin: 11px 0; color: var(--mf-copy); font-size: 11px; font-weight: 700; }
+.card-forecast-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; border-top: 1px solid var(--mf-border); color: var(--mf-ink); font-size: 10px; }
+.card-forecast-row span strong,.card-forecast-row span small { display: block; }
+.card-forecast-row span small { margin-top: 3px; color: var(--mf-muted); font-size: 9px; }
+.card-forecast-row > strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lower-panel { min-height: 190px; }
 .budget-line { display: grid; gap: 7px; padding: 11px 0; border-top: 1px solid var(--mf-border); }
 .budget-line-head { display: flex; justify-content: space-between; gap: 14px; color: var(--mf-copy); font-size: 10px; }

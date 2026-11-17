@@ -700,6 +700,19 @@ function shortDate(value) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short", timeZone: APP_TIME_ZONE }).format(date).replace(".", "");
 }
 
+function nextCardPaymentDate(paymentDay, today = todayISO()) {
+  const day = Number(paymentDay);
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+  let [year, month, todayDay] = today.split("-").map(Number);
+  let targetDay = Math.min(day, new Date(year, month, 0).getDate());
+  if (targetDay < todayDay) {
+    month += 1;
+    if (month > 12) { year += 1; month = 1; }
+    targetDay = Math.min(day, new Date(year, month, 0).getDate());
+  }
+  return `${year}-${String(month).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+}
+
 async function renderDashboard() {
   pageLoading();
   try {
@@ -772,6 +785,17 @@ async function renderDashboard() {
       const details = credit ? `Disponible · ${moneyFromMinor(amount, item.moneda || currency)}` : linkedAccount ? `Saldo vinculado · ${moneyFromMinor(linkedAccount.saldoActualMinor ?? linkedAccount.saldoInicialMinor, linkedAccount.moneda || currency)}` : "Tarjeta de débito";
       return `<article class="bank-card-preview"><div class="bank-card-top"><span>MASTERFULL <small>FINANZAS</small></span><svg aria-hidden="true"><use href="#i-chip"></use></svg></div><strong class="bank-card-name">${esc(item.nombre || optionLabel(item.entidad) || "Tarjeta")}</strong><div class="bank-card-bottom"><span>${esc(credit ? "Crédito" : "Débito")}${item.entidad ? ` · ${esc(optionLabel(item.entidad))}` : ""}</span><strong>${esc(details)}</strong></div><span class="bank-card-security">Identificación protegida</span></article>`;
     }).join("");
+    const creditCards = (state.data.tarjetas || []).filter((card) => !card.archivada && card.tipo === "CREDITO" && (card.moneda || "PEN") === currency)
+      .map((card) => ({ ...card, estimatedDueDate: nextCardPaymentDate(card.dia_pago), usedMinor: Math.max(0, Number(card.utilizadoMinor ?? card.saldoInicialUsadoMinor ?? 0)) }))
+      .filter((card) => card.usedMinor > 0)
+      .sort((a, b) => String(a.estimatedDueDate || "9999-12-31").localeCompare(String(b.estimatedDueDate || "9999-12-31")));
+    const availableForCardsMinor = activeAccounts
+      .filter((account) => (account.moneda || "PEN") === currency && ACCOUNT_NATURE[account.tipo] !== "PASIVO" && account.naturaleza !== "PASIVO")
+      .reduce((sum, account) => sum + Number(account.saldoActualMinor ?? account.saldoInicialMinor ?? 0), 0);
+    const creditUsedMinor = creditCards.reduce((sum, card) => sum + card.usedMinor, 0);
+    const cardPaymentGapMinor = Math.max(0, creditUsedMinor - availableForCardsMinor);
+    const cardForecastRows = creditCards.map((card) => `<div class="card-forecast-row"><span><strong>${esc(card.nombre || optionLabel(card.entidad) || "Tarjeta")}</strong><small>${card.estimatedDueDate ? `Vencimiento estimado · ${esc(shortDate(card.estimatedDueDate))}` : "Completa el día límite de pago en la tarjeta"}</small></span><strong>${esc(moneyFromMinor(card.usedMinor, currency))}</strong></div>`).join("");
+    const cardForecastMarkup = `<section class="panel dashboard-panel card-payment-forecast"><header class="dashboard-panel-head"><div><h2>¿Alcanza para pagar las tarjetas?</h2><p class="caption">Estimación en ${esc(currency)} con los saldos disponibles hoy</p></div><a class="link-button" href="#tarjetas">Ver tarjetas</a></header>${creditCards.length ? `<div class="card-forecast-summary"><div><span>Disponible en cuentas</span><strong>${esc(moneyFromMinor(availableForCardsMinor, currency))}</strong></div><div><span>Saldo utilizado</span><strong>${esc(moneyFromMinor(creditUsedMinor, currency))}</strong></div><div class="${cardPaymentGapMinor ? "is-short" : "is-covered"}"><span>${cardPaymentGapMinor ? "Faltaría" : "Diferencia"}</span><strong>${esc(moneyFromMinor(cardPaymentGapMinor || Math.max(0, availableForCardsMinor - creditUsedMinor), currency))}</strong></div></div><p class="card-forecast-status ${cardPaymentGapMinor ? "is-short" : "is-covered"}">${cardPaymentGapMinor ? `Con los saldos actuales faltarían ${esc(moneyFromMinor(cardPaymentGapMinor, currency))} para cubrir todo lo utilizado.` : "Los saldos actuales cubrirían todo lo utilizado en tus tarjetas."}</p><div class="card-forecast-list">${cardForecastRows}</div><p class="table-note">Es una referencia: no suma ingresos futuros ni gastos por venir. El saldo utilizado puede diferir del monto que exige el próximo estado de cuenta.</p>` : `<div class="dashboard-empty compact-empty"><strong>No hay deuda utilizada en tarjetas de crédito</strong><p>Cuando registres compras con crédito, estimaremos si el saldo actual alcanza para cubrirlas.</p></div>`}</section>`;
     const budgetsMarkup = budgets.length ? budgets.slice(0, 4).map((item) => `<div class="budget-line"><div class="budget-line-head"><span>${esc(categoryName(item.categoria_id))}</span><strong>${esc(moneyFromMinor(item.spentMinor, currency))}<small> / ${esc(moneyFromMinor(item.limiteMinor, currency))}</small></strong></div><progress max="${Math.max(item.limiteMinor, 1)}" value="${Math.min(item.spentMinor, item.limiteMinor)}" aria-label="${esc(categoryName(item.categoria_id))}: ${esc(moneyFromMinor(item.spentMinor, currency))} de ${esc(moneyFromMinor(item.limiteMinor, currency))}"></progress></div>`).join("") : `<div class="dashboard-empty inline-empty"><strong>Aún no tienes presupuestos</strong><p>Define un límite por categoría para controlar tus gastos.</p><a class="link-button" href="#presupuestos">Configurar presupuesto</a></div>`;
     const goalsMarkup = goalPage.rows.length ? goalPage.rows.map((goal) => `<div class="budget-line"><div class="budget-line-head"><span>${esc(goal.nombre)}</span><strong>${esc(money(goal.monto_actual, goal.moneda))}<small> / ${esc(money(goal.monto_objetivo, goal.moneda))}</small></strong></div><progress max="${Math.max(Number(goal.monto_objetivo), 1)}" value="${Math.min(Number(goal.monto_actual), Number(goal.monto_objetivo))}" aria-label="${esc(goal.nombre)}"></progress></div>`).join("") : `<div class="dashboard-empty inline-empty"><strong>Sin metas de ahorro</strong><p>Cuando registres una meta, podrás seguir su avance aquí.</p><a class="link-button" href="#metas">Ver metas</a></div>`;
     const debtMarkup = Object.entries(debtByCurrency).length
@@ -794,6 +818,7 @@ async function renderDashboard() {
       <div class="dashboard-lower-grid">
         <section class="panel dashboard-panel lower-panel"><header class="dashboard-panel-head"><div><h2>Presupuestos del mes</h2><p class="caption">Gastos registrados frente a tus límites</p></div><a class="link-button" href="#presupuestos">Gestionar</a></header>${budgetsMarkup}</section>
         <section class="panel dashboard-panel lower-panel"><header class="dashboard-panel-head"><div><h2>Planificación</h2><p class="caption">Deudas y objetivos registrados</p></div></header><div class="planning-block"><div class="planning-block-head"><h3>Deudas pendientes</h3><a class="link-button" href="#deudas">Ver deudas</a></div>${debtMarkup}</div><div class="planning-block"><div class="planning-block-head"><h3>Metas de ahorro</h3><a class="link-button" href="#metas">Ver metas</a></div>${goalsMarkup}</div></section>
+        ${cardForecastMarkup}
       </div>`;
   } catch (error) { showDataError(error); }
 }
